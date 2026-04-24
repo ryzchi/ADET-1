@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:smartedu/security_service/auth_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'dart:math';
+import '/security_service/auth_service.dart';
 
 class TeacherDashboardPage extends StatefulWidget {
   const TeacherDashboardPage({super.key});
@@ -13,11 +16,309 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
   int _selectedIndex = 0;
   bool _isMobile = false;
 
+  // ===== FUNCTIONAL DATA STORAGE =====
+  List<Map<String, dynamic>> _students = [];
+  List<Map<String, dynamic>> _announcements = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Load students
+    final studentsJson = prefs.getString('teacher_students');
+    if (studentsJson != null) {
+      _students = List<Map<String, dynamic>>.from(jsonDecode(studentsJson));
+    } else {
+      // Default data from your original code
+      _students = [
+        {
+          'name': 'Juan Dela Cruz',
+          'id': '2024-0001',
+          'grade': 'Grade 10-A',
+          'avg': '92%',
+          'attendance': '95%',
+        },
+        {
+          'name': 'Maria Santos',
+          'id': '2024-0002',
+          'grade': 'Grade 10-A',
+          'avg': '95%',
+          'attendance': '98%',
+        },
+        {
+          'name': 'Pedro Reyes',
+          'id': '2024-0003',
+          'grade': 'Grade 10-A',
+          'avg': '78%',
+          'attendance': '85%',
+        },
+        {
+          'name': 'Ana Garcia',
+          'id': '2024-0004',
+          'grade': 'Grade 10-A',
+          'avg': '88%',
+          'attendance': '92%',
+        },
+        {
+          'name': 'Jose Lim',
+          'id': '2024-0005',
+          'grade': 'Grade 10-A',
+          'avg': '85%',
+          'attendance': '90%',
+        },
+        {
+          'name': 'Carmen Tan',
+          'id': '2024-0006',
+          'grade': 'Grade 10-A',
+          'avg': '91%',
+          'attendance': '96%',
+        },
+        {
+          'name': 'Miguel Cruz',
+          'id': '2024-0007',
+          'grade': 'Grade 10-A',
+          'avg': '73%',
+          'attendance': '80%',
+        },
+        {
+          'name': 'Sofia Reyes',
+          'id': '2024-0008',
+          'grade': 'Grade 10-A',
+          'avg': '96%',
+          'attendance': '100%',
+        },
+      ];
+      _saveStudents();
+    }
+
+    // Load announcements
+    final announcementsJson = prefs.getString('teacher_announcements');
+    if (announcementsJson != null) {
+      _announcements = List<Map<String, dynamic>>.from(
+        jsonDecode(announcementsJson),
+      );
+    } else {
+      _announcements = [
+        {
+          'title': 'Midterm Exam Schedule',
+          'content':
+              'The midterm examination will be held on November 15-20, 2024. All students must bring their school ID and examination permit. Please review the schedule posted on the bulletin board.',
+          'date': 'Oct 25, 2024',
+          'color': 'blue',
+          'isNew': true,
+          'views': 42,
+        },
+        {
+          'title': 'Science Fair 2024',
+          'content':
+              'Join us for the annual Science Fair on November 10, 2024. Students are encouraged to showcase their innovative projects. Registration deadline is November 5.',
+          'date': 'Oct 24, 2024',
+          'color': 'green',
+          'isNew': true,
+          'views': 38,
+        },
+        {
+          'title': 'Semestral Break Notice',
+          'content':
+              'Classes will be suspended from October 28 to November 3 for the semestral break. Classes will resume on November 4, 2024.',
+          'date': 'Oct 20, 2024',
+          'color': 'orange',
+          'isNew': false,
+          'views': 42,
+        },
+      ];
+      _saveAnnouncements();
+    }
+  }
+
+  Future<void> _saveStudents() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('teacher_students', jsonEncode(_students));
+  }
+
+  Future<void> _saveAnnouncements() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('teacher_announcements', jsonEncode(_announcements));
+  }
+
   Future<void> _logout() async {
     await _authService.logout();
     if (mounted) {
       Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
     }
+  }
+
+  // ===== FUNCTION 1: ADD STUDENT =====
+  void _showAddStudentDialog() {
+    final nameController = TextEditingController();
+    final idController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add New Student'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                hintText: 'Juan Dela Cruz',
+                labelText: 'Full Name',
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: idController,
+              decoration: const InputDecoration(
+                hintText: '2024-0009',
+                labelText: 'Student ID',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.isNotEmpty &&
+                  idController.text.isNotEmpty) {
+                setState(() {
+                  _students.add({
+                    'name': nameController.text,
+                    'id': idController.text,
+                    'grade': 'Grade 10-A',
+                    'avg': '${Random().nextInt(25) + 70}%',
+                    'attendance': '${Random().nextInt(20) + 80}%',
+                  });
+                });
+                _saveStudents();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Student added successfully!')),
+                );
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===== FUNCTION 2: DELETE STUDENT =====
+  void _deleteStudent(int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Student'),
+        content: Text(
+          'Are you sure you want to delete ${_students[index]['name']}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _students.removeAt(index);
+              });
+              _saveStudents();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Student deleted!')));
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===== FUNCTION 3: ADD ANNOUNCEMENT =====
+  void _showAddAnnouncementDialog() {
+    final titleController = TextEditingController();
+    final contentController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New Announcement'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              decoration: const InputDecoration(
+                hintText: 'Announcement Title',
+                labelText: 'Title',
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: contentController,
+              decoration: const InputDecoration(
+                hintText: 'Enter announcement details...',
+                labelText: 'Content',
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (titleController.text.isNotEmpty &&
+                  contentController.text.isNotEmpty) {
+                setState(() {
+                  _announcements.insert(0, {
+                    'title': titleController.text,
+                    'content': contentController.text,
+                    'date': 'Just now',
+                    'color': 'blue',
+                    'isNew': true,
+                    'views': 0,
+                  });
+                });
+                _saveAnnouncements();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Announcement posted!')),
+                );
+              }
+            },
+            child: const Text('Post'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===== FUNCTION 4: DELETE ANNOUNCEMENT =====
+  void _deleteAnnouncement(int index) {
+    setState(() {
+      _announcements.removeAt(index);
+    });
+    _saveAnnouncements();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Announcement deleted!')));
   }
 
   @override
@@ -36,6 +337,8 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
       ),
     );
   }
+
+  // ... (REST OF YOUR ORIGINAL CODE - SAME LANG, HINDI KO BINAGO) ...
 
   PreferredSizeWidget _buildMobileAppBar() {
     return AppBar(
@@ -263,13 +566,14 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     }
   }
 
-  // ==================== OVERVIEW PANEL ====================
+  // ==================== OVERVIEW PANEL (SPRINT 2) ====================
   Widget _buildOverview() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Welcome Header
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -322,6 +626,8 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
             ),
           ),
           const SizedBox(height: 24),
+
+          // Stats Grid - Responsive
           LayoutBuilder(
             builder: (context, constraints) {
               final crossAxisCount = constraints.maxWidth < 600 ? 2 : 4;
@@ -335,7 +641,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                 children: [
                   _statCard(
                     'Total Students',
-                    '42',
+                    '${_students.length}',
                     'Grade 10-A',
                     Colors.blue,
                     Icons.people,
@@ -366,6 +672,8 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
             },
           ),
           const SizedBox(height: 24),
+
+          // Two Column Layout - Responsive
           LayoutBuilder(
             builder: (context, constraints) {
               if (constraints.maxWidth < 700) {
@@ -735,19 +1043,15 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
             ],
           ),
           const SizedBox(height: 12),
-          _announcementPreviewItem(
-            'Midterm Exam Schedule',
-            'Oct 25, 2024',
-            true,
-          ),
-          const Divider(),
-          _announcementPreviewItem('Science Fair 2024', 'Oct 24, 2024', true),
-          const Divider(),
-          _announcementPreviewItem(
-            'Semestral Break Notice',
-            'Oct 20, 2024',
-            false,
-          ),
+          ..._announcements
+              .take(3)
+              .map(
+                (a) => _announcementPreviewItem(
+                  a['title'],
+                  a['date'],
+                  a['isNew'] == true,
+                ),
+              ),
         ],
       ),
     );
@@ -789,67 +1093,8 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     );
   }
 
-  // ==================== STUDENTS PAGE ====================
+  // ==================== FUNCTIONAL STUDENTS PAGE ====================
   Widget _buildStudentList() {
-    final students = [
-      {
-        'name': 'Juan Dela Cruz',
-        'id': '2024-0001',
-        'grade': 'Grade 10-A',
-        'avg': '92%',
-        'attendance': '95%',
-      },
-      {
-        'name': 'Maria Santos',
-        'id': '2024-0002',
-        'grade': 'Grade 10-A',
-        'avg': '95%',
-        'attendance': '98%',
-      },
-      {
-        'name': 'Pedro Reyes',
-        'id': '2024-0003',
-        'grade': 'Grade 10-A',
-        'avg': '78%',
-        'attendance': '85%',
-      },
-      {
-        'name': 'Ana Garcia',
-        'id': '2024-0004',
-        'grade': 'Grade 10-A',
-        'avg': '88%',
-        'attendance': '92%',
-      },
-      {
-        'name': 'Jose Lim',
-        'id': '2024-0005',
-        'grade': 'Grade 10-A',
-        'avg': '85%',
-        'attendance': '90%',
-      },
-      {
-        'name': 'Carmen Tan',
-        'id': '2024-0006',
-        'grade': 'Grade 10-A',
-        'avg': '91%',
-        'attendance': '96%',
-      },
-      {
-        'name': 'Miguel Cruz',
-        'id': '2024-0007',
-        'grade': 'Grade 10-A',
-        'avg': '73%',
-        'attendance': '80%',
-      },
-      {
-        'name': 'Sofia Reyes',
-        'id': '2024-0008',
-        'grade': 'Grade 10-A',
-        'avg': '96%',
-        'attendance': '100%',
-      },
-    ];
-
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
       child: Column(
@@ -867,7 +1112,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () {},
+                onPressed: _showAddStudentDialog, // ✅ FUNCTIONAL
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Add Student'),
                 style: ElevatedButton.styleFrom(
@@ -975,7 +1220,10 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                     ],
                   ),
                 ),
-                ...students.map((s) => _studentRow(s)),
+                ...List.generate(
+                  _students.length,
+                  (index) => _studentRow(index),
+                ),
               ],
             ),
           ),
@@ -984,7 +1232,8 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     );
   }
 
-  Widget _studentRow(Map<String, String> student) {
+  Widget _studentRow(int index) {
+    final student = _students[index];
     final avg = int.parse(student['avg']!.replaceAll('%', ''));
     final color = avg >= 90
         ? Colors.green
@@ -1062,11 +1311,11 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
             width: 60,
             child: IconButton(
               icon: const Icon(
-                Icons.more_vert,
+                Icons.delete,
                 size: 18,
-                color: Color(0xFF94A3B8),
-              ),
-              onPressed: () {},
+                color: Colors.red,
+              ), // ✅ FUNCTIONAL DELETE
+              onPressed: () => _deleteStudent(index),
             ),
           ),
         ],
@@ -2288,7 +2537,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     );
   }
 
-  // ==================== ANNOUNCEMENTS PAGE ====================
+  // ==================== FUNCTIONAL ANNOUNCEMENTS PAGE ====================
   Widget _buildAnnouncements() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
@@ -2307,7 +2556,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () {},
+                onPressed: _showAddAnnouncementDialog, // ✅ FUNCTIONAL
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('New Announcement'),
                 style: ElevatedButton.styleFrom(
@@ -2327,46 +2576,26 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
             style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
           ),
           const SizedBox(height: 24),
-          _teacherAnnouncementCard(
-            'Midterm Exam Schedule',
-            'The midterm examination will be held on November 15-20, 2024. All students must bring their school ID and examination permit. Please review the schedule posted on the bulletin board.',
-            'Oct 25, 2024',
-            Colors.blue,
-            true,
-            views: 42,
-          ),
-          const SizedBox(height: 12),
-          _teacherAnnouncementCard(
-            'Science Fair 2024',
-            'Join us for the annual Science Fair on November 10, 2024. Students are encouraged to showcase their innovative projects. Registration deadline is November 5.',
-            'Oct 24, 2024',
-            Colors.green,
-            true,
-            views: 38,
-          ),
-          const SizedBox(height: 12),
-          _teacherAnnouncementCard(
-            'Semestral Break Notice',
-            'Classes will be suspended from October 28 to November 3 for the semestral break. Classes will resume on November 4, 2024.',
-            'Oct 20, 2024',
-            Colors.orange,
-            false,
-            views: 42,
+          ...List.generate(
+            _announcements.length,
+            (index) => _teacherAnnouncementCard(index),
           ),
         ],
       ),
     );
   }
 
-  Widget _teacherAnnouncementCard(
-    String title,
-    String content,
-    String date,
-    Color color,
-    bool isActive, {
-    required int views,
-  }) {
+  Widget _teacherAnnouncementCard(int index) {
+    final announcement = _announcements[index];
+    final color = announcement['color'] == 'blue'
+        ? Colors.blue
+        : announcement['color'] == 'green'
+        ? Colors.green
+        : Colors.orange;
+    final isActive = announcement['isNew'] == true;
+
     return Container(
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -2402,7 +2631,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title,
+                      announcement['title'],
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 15,
@@ -2411,7 +2640,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      date,
+                      announcement['date'],
                       style: TextStyle(
                         color: Colors.grey.shade500,
                         fontSize: 12,
@@ -2425,7 +2654,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                   Icon(Icons.visibility, size: 14, color: Colors.grey.shade400),
                   const SizedBox(width: 4),
                   Text(
-                    '$views',
+                    '${announcement['views']}',
                     style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
                   ),
                 ],
@@ -2437,6 +2666,11 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                   size: 18,
                   color: Color(0xFF94A3B8),
                 ),
+                onSelected: (value) {
+                  if (value == 'delete') {
+                    _deleteAnnouncement(index);
+                  }
+                },
                 itemBuilder: (context) => [
                   const PopupMenuItem(value: 'edit', child: Text('Edit')),
                   const PopupMenuItem(
@@ -2449,7 +2683,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
           ),
           const SizedBox(height: 12),
           Text(
-            content,
+            announcement['content'],
             style: TextStyle(
               color: Colors.grey.shade600,
               fontSize: 13,
