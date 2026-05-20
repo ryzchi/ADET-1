@@ -5,9 +5,13 @@ class AssignmentService {
 
   Future<List<Map<String, dynamic>>> fetchAssignments() async {
     final response = await _api.get('assignments.php');
+
     if (response['success'] == true) {
-      return List<Map<String, dynamic>>.from((response['assignments'] ?? []) as List);
+      return List<Map<String, dynamic>>.from(
+        (response['assignments'] ?? []) as List,
+      );
     }
+
     return [];
   }
 
@@ -38,14 +42,16 @@ class AssignmentService {
     });
   }
 
-  Future<Map<String, dynamic>> deleteAssignment(String id) async {
+  Future<Map<String, dynamic>> deleteAssignment(
+    String id,
+  ) async {
     return _api.post('assignments.php', {
       'action': 'delete',
       'id': id,
     });
   }
 
-  Future<Map<String, dynamic>> submitAssignment({
+   Future<Map<String, dynamic>> submitAssignment({
     required String assignmentId,
     required String filePath,
     required String studentEmail,
@@ -57,7 +63,32 @@ class AssignmentService {
       fields: {
         'assignment_id': assignmentId,
         'student_email': studentEmail,
+        'status': 'Pending',
       },
     );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchSubmissions() async {
+    final response = await _api.get('submissions.php');
+
+    if (response['success'] == true) {
+      return List<Map<String, dynamic>>.from(
+        response['submissions'],
+      );
+    }
+
+    return [];
+  }
+
+  Future<Map<String, dynamic>> reviewSubmission({
+    required String submissionId,
+    required String status,
+    required String feedback,
+  }) async {
+    return _api.post('review_submission.php', {
+      'submission_id': submissionId,
+      'status': status,
+      'feedback': feedback,
+    });
   }
 }

@@ -11,6 +11,15 @@ class LessonPlanPage extends StatefulWidget {
 
 class LessonPlanPageState extends State<LessonPlanPage> {
   List<UploadedMaterial> uploadedMaterials = [];
+  List<UploadedMaterial> filteredMaterials = [];
+
+  final TextEditingController searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    filteredMaterials = uploadedMaterials;
+  }
 
   Future<void> navigateToUpload() async {
     final result = await Navigator.push<UploadedMaterial>(
@@ -25,14 +34,35 @@ class LessonPlanPageState extends State<LessonPlanPage> {
     if (result != null) {
       setState(() {
         uploadedMaterials.add(result);
+        filteredMaterials = uploadedMaterials;
       });
     }
+  }
+
+  void searchMaterials(String query) {
+    final results = uploadedMaterials.where((material) {
+      return material.title.toLowerCase().contains(query.toLowerCase()) ||
+          material.subject.toLowerCase().contains(query.toLowerCase());
+    }).toList();
+
+    setState(() {
+      filteredMaterials = results;
+    });
+  }
+
+  void deleteMaterial(UploadedMaterial material) {
+    setState(() {
+      uploadedMaterials.remove(material);
+      filteredMaterials = uploadedMaterials;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Lesson Plan')),
+      appBar: AppBar(
+        title: const Text('Learning Materials'),
+      ),
       body: Column(
         children: [
           Padding(
@@ -44,19 +74,36 @@ class LessonPlanPageState extends State<LessonPlanPage> {
             ),
           ),
 
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: searchController,
+              decoration: InputDecoration(
+                hintText: 'Search learning materials...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onChanged: searchMaterials,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
           Expanded(
-            child: uploadedMaterials.isEmpty
+            child: filteredMaterials.isEmpty
                 ? const Center(
                     child: Text(
-                      'No materials uploaded yet',
+                      'No materials found',
                       style: TextStyle(color: Colors.grey),
                     ),
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: uploadedMaterials.length,
+                    itemCount: filteredMaterials.length,
                     itemBuilder: (context, index) {
-                      final material = uploadedMaterials[index];
+                      final material = filteredMaterials[index];
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -64,12 +111,9 @@ class LessonPlanPageState extends State<LessonPlanPage> {
                           leading: const Icon(Icons.insert_drive_file),
                           title: Text(material.title),
                           subtitle: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Subject: ${material.subject}',
-                              ),
+                              Text('Subject: ${material.subject}'),
                               Text(
                                 'File: ${material.fileName}',
                                 style: TextStyle(
@@ -79,16 +123,25 @@ class LessonPlanPageState extends State<LessonPlanPage> {
                               ),
                             ],
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(
-                              Icons.delete,
-                              color: Colors.red,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                uploadedMaterials.removeAt(index);
-                              });
-                            },
+
+                          // FIX: SAFE ACTIONS (NO ROLE CHANGE, SAME STRUCTURE)
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.download),
+                                onPressed: () {
+                                  // optional download/open
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete,
+                                    color: Colors.red),
+                                onPressed: () {
+                                  deleteMaterial(material);
+                                },
+                              ),
+                            ],
                           ),
                         ),
                       );

@@ -7,19 +7,28 @@ import '../security_service/auth_service.dart';
 class SubmitAssignmentPage extends StatefulWidget {
   final String assignmentId;
 
-  const SubmitAssignmentPage({super.key, required this.assignmentId});
+  const SubmitAssignmentPage({
+    super.key,
+    required this.assignmentId,
+  });
 
   @override
-  State<SubmitAssignmentPage> createState() => _SubmitAssignmentPageState();
+  State<SubmitAssignmentPage> createState() =>
+      _SubmitAssignmentPageState();
 }
 
-class _SubmitAssignmentPageState extends State<SubmitAssignmentPage> {
+class _SubmitAssignmentPageState
+    extends State<SubmitAssignmentPage> {
   File? file;
-  bool loading = false;
-  final AssignmentService _assignmentService = AssignmentService();
 
-  Future pickFile() async {
+  bool loading = false;
+
+  final AssignmentService _assignmentService =
+      AssignmentService();
+
+  Future<void> pickFile() async {
     final result = await FilePicker.platform.pickFiles();
+
     if (result != null) {
       setState(() {
         file = File(result.files.single.path!);
@@ -27,18 +36,30 @@ class _SubmitAssignmentPageState extends State<SubmitAssignmentPage> {
     }
   }
 
-  Future uploadSubmission() async {
-    if (file == null) return;
-
-    final studentEmail = AuthService().currentUserEmail;
-    if (studentEmail == null) {
+  Future<void> uploadSubmission() async {
+    if (file == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Student email is not available.')),
+        const SnackBar(
+          content: Text('Please select a file first'),
+        ),
       );
       return;
     }
 
-    setState(() => loading = true);
+    final studentEmail = AuthService().currentUserEmail;
+
+    if (studentEmail == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Student email not found'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      loading = true;
+    });
 
     final result = await _assignmentService.submitAssignment(
       assignmentId: widget.assignmentId,
@@ -46,40 +67,63 @@ class _SubmitAssignmentPageState extends State<SubmitAssignmentPage> {
       studentEmail: studentEmail,
     );
 
-    setState(() => loading = false);
+    setState(() {
+      loading = false;
+    });
 
-    if (mounted) {
-      if (result['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Submitted successfully!')),
-        );
-        Navigator.pop(context);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Submission failed')),
-        );
-      }
+    if (result['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Assignment submitted successfully'),
+        ),
+      );
+
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result['message'] ?? 'Submission failed',
+          ),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Submit Assignment')),
+      appBar: AppBar(
+        title: const Text('Submit Assignment'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ElevatedButton(
+            ElevatedButton.icon(
               onPressed: pickFile,
-              child: const Text('Pick File'),
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Pick File'),
             ),
-            const SizedBox(height: 10),
-            Text(file != null ? file!.path.split('/').last : 'No file selected'),
-            const SizedBox(height: 20),
+
+            const SizedBox(height: 15),
+
+            Text(
+              file != null
+                  ? file!.path.split('/').last
+                  : 'No file selected',
+            ),
+
+            const SizedBox(height: 25),
+
             ElevatedButton(
               onPressed: loading ? null : uploadSubmission,
-              child: Text(loading ? 'Uploading...' : 'Submit'),
+              child: Text(
+                loading
+                    ? 'Uploading...'
+                    : 'Submit Assignment',
+              ),
             ),
           ],
         ),

@@ -1854,7 +1854,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                     const SizedBox(height: 4),
                     Text(
                       assignment['subject'],
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.blue,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -1892,11 +1892,11 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Icon(Icons.calendar_today, size: 16, color: Colors.orange),
+              const Icon(Icons.calendar_today, size: 16, color: Colors.orange),
               const SizedBox(width: 8),
               Text(
                 'Deadline: ${assignment['deadline']}',
-                style: TextStyle(
+                style: const TextStyle(
                   color: Colors.orange,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
