@@ -19,7 +19,6 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   String? _message;
   bool _isSuccess = false;
   bool _pinSent = false;
-  String? _generatedPin;
 
   Future<void> _requestPin() async {
     setState(() => _isLoading = true);
@@ -29,7 +28,6 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     setState(() {
       _isLoading = false;
       _pinSent = result['success'];
-      _generatedPin = result['pin'];
     });
 
     if (result['success'] && mounted) {

@@ -1,77 +1,99 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../services/api_client.dart';
+import 'upload_material_page.dart';
+import 'uploaded_material.dart';
 
-class MaterialListPage extends StatefulWidget {
-  const MaterialListPage({super.key});
+class LessonPlanPage extends StatefulWidget {
+  const LessonPlanPage({super.key});
 
   @override
-  State<MaterialListPage> createState() => _MaterialListPageState();
+  State<LessonPlanPage> createState() => LessonPlanPageState();
 }
 
-class _MaterialListPageState extends State<MaterialListPage> {
-  String search = '';
+class LessonPlanPageState extends State<LessonPlanPage> {
+  List<UploadedMaterial> uploadedMaterials = [];
 
-  Future<List<Map<String, dynamic>>> fetchMaterials() async {
-    final response = await ApiClient().get('materials.php');
-    if (response['success'] == true) {
-      return List<Map<String, dynamic>>.from((response['materials'] ?? []) as List);
+  Future<void> navigateToUpload() async {
+    final result = await Navigator.push<UploadedMaterial>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const UploadMaterialPage(
+          preselectedSubject: 'Mathematics',
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        uploadedMaterials.add(result);
+      });
     }
-    return [];
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Materials')),
+      appBar: AppBar(title: const Text('Lesson Plan')),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: TextField(
-              decoration: const InputDecoration(labelText: 'Search'),
-              onChanged: (val) => setState(() => search = val),
+            child: ElevatedButton.icon(
+              onPressed: navigateToUpload,
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Upload Material'),
             ),
           ),
+
           Expanded(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: fetchMaterials(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                final docs = snapshot.data?.where((doc) {
-                  return doc['title']
-                      .toString()
-                      .toLowerCase()
-                      .contains(search.toLowerCase());
-                }).toList() ?? [];
+            child: uploadedMaterials.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No materials uploaded yet',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: uploadedMaterials.length,
+                    itemBuilder: (context, index) {
+                      final material = uploadedMaterials[index];
 
-                if (docs.isEmpty) {
-                  return const Center(child: Text('No materials found.'));
-                }
-
-                return ListView.builder(
-                  itemCount: docs.length,
-                  itemBuilder: (context, i) {
-                    final data = docs[i];
-                    return ListTile(
-                      title: Text(data['title'] ?? ''),
-                      subtitle: Text(data['subject'] ?? ''),
-                      onTap: () async {
-                        final uri = Uri.parse(data['file_url'] ?? '');
-                        if (await canLaunchUrl(uri)) {
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
-                        }
-                      },
-                    );
-                  },
-                );
-              },
-            ),
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: ListTile(
+                          leading: const Icon(Icons.insert_drive_file),
+                          title: Text(material.title),
+                          subtitle: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Subject: ${material.subject}',
+                              ),
+                              Text(
+                                'File: ${material.fileName}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.delete,
+                              color: Colors.red,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                uploadedMaterials.removeAt(index);
+                              });
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

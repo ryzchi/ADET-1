@@ -1,10 +1,11 @@
 ﻿import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import './material_service.dart';
+import 'uploaded_material.dart';
 
 class UploadMaterialPage extends StatefulWidget {
-  const UploadMaterialPage({super.key});
+  final String? preselectedSubject;
+  const UploadMaterialPage({super.key, this.preselectedSubject});
 
   @override
   State<UploadMaterialPage> createState() => _UploadMaterialPageState();
@@ -12,28 +13,56 @@ class UploadMaterialPage extends StatefulWidget {
 
 class _UploadMaterialPageState extends State<UploadMaterialPage> {
   File? selectedFile;
-  final service = MaterialService();
-  String title = '';
-  String subject = '';
+  String? selectedFileName;
+  List<int>? selectedFileBytes;
+
+  late TextEditingController _titleController;
+  late TextEditingController _subjectController;
+
   bool _isLoading = false;
   String? _errorMessage;
 
-  Future pickFile() async {
-    final result = await FilePicker.platform.pickFiles();
-    if (result != null) {
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController();
+    _subjectController =
+        TextEditingController(text: widget.preselectedSubject ?? '');
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _subjectController.dispose();
+    super.dispose();
+  }
+
+  Future<void> pickFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      withData: true,
+    );
+
+    if (result != null && result.files.isNotEmpty) {
+      final picked = result.files.first;
+
       setState(() {
-        selectedFile = File(result.files.single.path!);
+        selectedFileName = picked.name;
+        selectedFileBytes = picked.bytes;
+        selectedFile =
+            picked.path != null ? File(picked.path!) : null;
       });
     }
   }
 
-  Future upload() async {
-    if (selectedFile == null) {
-      setState(() => _errorMessage = 'Please select a file to upload.');
+  Future<void> upload() async {
+    if (selectedFileName == null) {
+      setState(() => _errorMessage = 'Please select a file.');
       return;
     }
-    if (title.trim().isEmpty || subject.trim().isEmpty) {
-      setState(() => _errorMessage = 'Please enter title and subject.');
+
+    if (_titleController.text.trim().isEmpty ||
+        _subjectController.text.trim().isEmpty) {
+      setState(() => _errorMessage = 'Enter title and subject.');
       return;
     }
 
@@ -42,59 +71,68 @@ class _UploadMaterialPageState extends State<UploadMaterialPage> {
       _errorMessage = null;
     });
 
-    final fileName = selectedFile!.path.split('/').last;
-    final result = await service.uploadMaterial(
-      file: selectedFile!,
-      title: title,
-      subject: subject,
-      type: fileName.split('.').last,
+    await Future.delayed(const Duration(seconds: 1));
+
+   final uploadedMaterial = UploadedMaterial(
+  title: _titleController.text.trim(),
+  subject: _subjectController.text.trim(),
+  fileName: selectedFileName!,
+  file: selectedFile,
+  fileBytes: selectedFileBytes,
+);
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Uploaded successfully!')),
     );
 
-    setState(() => _isLoading = false);
-
-    if (result['success'] == true) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Uploaded!')),
-        );
-      }
-    } else {
-      setState(() => _errorMessage = result['message'] ?? 'Upload failed');
-    }
+    Navigator.pop(context, uploadedMaterial);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Upload Material')),
+      appBar: AppBar(title: const Text('Upload File')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             TextField(
-              onChanged: (val) => title = val,
+              controller: _titleController,
               decoration: const InputDecoration(labelText: 'Title'),
             ),
+            const SizedBox(height: 12),
             TextField(
-              onChanged: (val) => subject = val,
+              controller: _subjectController,
               decoration: const InputDecoration(labelText: 'Subject'),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: pickFile, child: const Text('Pick File')),
+
+            ElevatedButton(
+              onPressed: pickFile,
+              child: const Text('Select File'),
+            ),
+
             const SizedBox(height: 8),
-            Text(selectedFile != null ? selectedFile!.path.split('/').last : 'No file selected'),
-            const SizedBox(height: 24),
+            Text(selectedFileName ?? 'No file selected'),
+
+            const SizedBox(height: 20),
+
             if (_errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  _errorMessage!,
-                  style: const TextStyle(color: Colors.red),
-                ),
+              Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.red),
               ),
+
+            const SizedBox(height: 10),
+
             ElevatedButton(
               onPressed: _isLoading ? null : upload,
-              child: _isLoading ? const CircularProgressIndicator() : const Text('Upload'),
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text('Upload File'),
             ),
           ],
         ),

@@ -87,7 +87,7 @@ class AuthService {
         'name': name,
         'email': email,
         'password': password,
-        'role': role.toLowerCase(),
+        'role': role.toLowerCase() == 'faculty' ? 'teacher' : role.toLowerCase(),
       });
       return {
         'success': response['success'] == true,
@@ -132,11 +132,18 @@ class AuthService {
     }
 
     try {
+      final normalizedRole = role.toLowerCase() == 'faculty' ? 'teacher' : role.toLowerCase();
+      print('📡 Sending login request: email=$email, role=$normalizedRole');
+      
       final response = await _api.post('login.php', {
         'email': email,
         'password': password,
-        'role': role.toLowerCase(),
+        'role': normalizedRole,
       });
+
+      print('📡 API Response: $response');
+      print('📡 Response type: ${response.runtimeType}');
+      print('📡 Response keys: ${response.keys}');
 
       if (response['success'] == true) {
         _failedAttempts = 0;
@@ -150,10 +157,12 @@ class AuthService {
           await prefs.remove('user_session');
           await prefs.setBool('remember_me', false);
         }
+        print('✅ Login successful, user: ${_currentUser?['name']}');
         return {'success': true, 'message': response['message'] ?? 'Login successful'};
       }
 
       if (response['needsVerification'] == true) {
+        print('⚠️ Account needs email verification');
         return {
           'success': false,
           'message': response['message'] ?? 'Please verify your account first.',
@@ -165,6 +174,7 @@ class AuthService {
       _failedAttempts += 1;
       if (_failedAttempts >= maxAttempts) {
         _lockoutEndTime = DateTime.now().add(lockoutDuration);
+        print('🔒 Too many failed attempts - account locked');
         return {
           'success': false,
           'message': 'Too many failed attempts. Account locked for 30 minutes.',
@@ -176,8 +186,12 @@ class AuthService {
         'success': false,
         'message': response['message'] ?? 'Invalid credentials. $remaining attempt(s) remaining.',
       };
-    } catch (_) {
-      return {'success': false, 'message': 'Unable to contact server'};
+    } catch (e) {
+      print('❌ Login exception caught: $e');
+      return {
+        'success': false,
+        'message': 'Login error: ${e.toString()}',
+      };
     }
   }
 

@@ -1,52 +1,70 @@
 import 'package:flutter/material.dart';
-import 'security_service/auth_service.dart';
-import 'public_view/home_page.dart';
+import 'dashboards_page/teacher_dashboard_page.dart';
+import 'dashboards_page/student_dashboard_page.dart';
+import 'pages/upload_material_page.dart';
 import 'public_view/login_page.dart';
+import 'public_view/home_page.dart';
 import 'public_view/news_page.dart';
 import 'public_view/calendar_page.dart';
-import 'security_service/role_login_page.dart';
 import 'security_service/register_page.dart';
-import 'security_service/forgot_password_page.dart';
-import 'security_service/reset_password_page.dart';
 import 'security_service/change_password_page.dart';
+import 'security_service/forgot_password_page.dart';
 import 'security_service/verify_email_page.dart';
-import '/dashboards_page/student_dashboard_page.dart';
-import 'dashboards_page/teacher_dashboard_page.dart';
+import 'security_service/reset_password_page.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await AuthService().init();
-  runApp(const DelaPazApp());
+void main() {
+  runApp(const MyApp());
 }
 
-class DelaPazApp extends StatelessWidget {
-  const DelaPazApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Dela Paz National High School',
-      debugShowCheckedModeBanner: false,
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const HomePage(),
-        '/login': (context) => const LoginPage(),
-        '/news': (context) => const NewsPage(),
-        '/calendar': (context) => const CalendarPage(),
-        '/student-login': (context) => const RoleLoginPage(role: 'Student'),
-        '/faculty-login': (context) => const RoleLoginPage(role: 'Faculty'),
-        '/register': (context) => const RegisterPage(),
-        '/forgot-password': (context) => const ForgotPasswordPage(),
-        '/reset-password': (context) => const ResetPasswordPage(),
-        '/change-password': (context) => const ChangePasswordPage(),
-        '/student-dashboard': (context) => const StudentDashboardPage(),
-        '/teacher-dashboard': (context) => const TeacherDashboardPage(),
-        '/verify-email': (context) {
-          final args =
-              ModalRoute.of(context)?.settings.arguments
-                  as Map<String, dynamic>?;
-          return VerifyEmailPage(email: args?['email'] ?? '');
-        },
+      title: 'Learning Platform',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      initialRoute: '/login',
+      onGenerateRoute: (settings) {
+        // Handle routes with arguments
+        if (settings.name == '/verify-email') {
+          final args = settings.arguments as Map<String, dynamic>?;
+          final email = args?['email'] ?? '';
+          return MaterialPageRoute(
+            builder: (context) => VerifyEmailPage(email: email),
+          );
+        }
+        
+        // Handle all other routes
+        switch (settings.name) {
+          case '/login':
+          case '/':
+            return MaterialPageRoute(builder: (context) => const LoginPage());
+          case '/home':
+            return MaterialPageRoute(builder: (context) => const HomePage());
+          case '/news':
+            return MaterialPageRoute(builder: (context) => const NewsPage());
+          case '/calendar':
+            return MaterialPageRoute(builder: (context) => const CalendarPage());
+          case '/dashboard':
+          case '/teacher-dashboard':
+          case '/faculty-dashboard':
+            return MaterialPageRoute(builder: (context) => const TeacherDashboardPage());
+          case '/student-dashboard':
+            return MaterialPageRoute(builder: (context) => const StudentDashboardPage());
+          case '/upload':
+            return MaterialPageRoute(builder: (context) => const UploadMaterialPage());
+          case '/register':
+            return MaterialPageRoute(builder: (context) => const RegisterPage());
+          case '/change-password':
+            return MaterialPageRoute(builder: (context) => const ChangePasswordPage());
+          case '/forgot-password':
+            return MaterialPageRoute(builder: (context) => const ForgotPasswordPage());
+          case '/reset-password':
+            return MaterialPageRoute(builder: (context) => const ResetPasswordPage());
+          default:
+            return MaterialPageRoute(builder: (context) => const LoginPage());
+        }
       },
     );
   }

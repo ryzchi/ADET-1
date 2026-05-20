@@ -19,7 +19,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   bool _obscureConfirm = true;
   String? _message;
   bool _isSuccess = false;
-  String? _generatedPin;
 
   Future<void> _requestPin() async {
     setState(() => _isLoading = true);
@@ -29,7 +28,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     setState(() {
       _isLoading = false;
       _pinSent = result['success'];
-      _generatedPin = result['pin'];
     });
 
     if (result['success'] && mounted) {

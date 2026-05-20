@@ -287,7 +287,7 @@ class _HomePageState extends State<HomePage>
                   runSpacing: 16,
                   children: [
                     InkWell(
-                      onTap: () => Navigator.pushNamed(context, '/admission'),
+                      onTap: () => Navigator.pushNamed(context, '/login'),
                       child: _heroButton(
                         'APPLY FOR ADMISSION',
                         const Color(0xFFFEB300),
@@ -295,7 +295,7 @@ class _HomePageState extends State<HomePage>
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => Navigator.pushNamed(context, '/academics'),
+                      onTap: () => Navigator.pushNamed(context, '/login'),
                       child: Container(
                         height: 58,
                         padding: const EdgeInsets.symmetric(horizontal: 20),

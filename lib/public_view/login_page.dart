@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '/security_service/role_login_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -325,8 +326,12 @@ class _LoginPageState extends State<LoginPage> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/student-login'),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const RoleLoginPage(role: 'student'),
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF007bff),
                     foregroundColor: Colors.white,
@@ -348,8 +353,12 @@ class _LoginPageState extends State<LoginPage> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/faculty-login'),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const RoleLoginPage(role: 'faculty'),
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color.fromARGB(255, 246, 242, 14),
                     foregroundColor: const Color(0xFF2c3e50),

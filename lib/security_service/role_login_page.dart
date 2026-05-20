@@ -30,45 +30,61 @@ class _RoleLoginPageState extends State<RoleLoginPage> {
       _errorMessage = null;
     });
 
-    // DEBUG PRINTS - check console to see what's happening
-    print('🔐 LOGIN ATTEMPT:');
-    print('   Email: ${_emailController.text.trim()}');
-    print('   Role: ${widget.role}');
-    print('   Password length: ${_passwordController.text.length}');
+    try {
+      // DEBUG PRINTS - check console to see what's happening
+      print('🔐 LOGIN ATTEMPT:');
+      print('   Email: ${_emailController.text.trim()}');
+      print('   Role: ${widget.role}');
+      print('   Password length: ${_passwordController.text.length}');
 
-    final result = await _authService.login(
-      _emailController.text.trim(),
-      _passwordController.text,
-      widget.role,
-      _rememberMe,
-    );
+      final result = await _authService.login(
+        _emailController.text.trim(),
+        _passwordController.text,
+        widget.role,
+        _rememberMe,
+      );
 
-    print('🔐 LOGIN RESULT: $result');
+      print('🔐 LOGIN RESULT: $result');
 
-    setState(() => _isLoading = false);
+      if (!mounted) return;
+      
+      setState(() => _isLoading = false);
 
-    if (result['success']) {
-      print('🔐 LOGIN SUCCESS - Navigating to dashboard...');
-      if (mounted) {
-        if (widget.role.toLowerCase() == 'student') {
-          Navigator.pushReplacementNamed(context, '/student-dashboard');
-        } else {
-          Navigator.pushReplacementNamed(context, '/teacher-dashboard');
-        }
-      }
-    } else {
-      print('🔐 LOGIN FAILED: ${result['message']}');
-      if (result['needsVerification'] == true) {
+      if (result['success'] == true) {
+        print('🔐 LOGIN SUCCESS - Navigating to dashboard...');
+        print('   User role: ${widget.role}');
         if (mounted) {
-          Navigator.pushNamed(
-            context,
-            '/verify-email',
-            arguments: {'email': result['email']},
-          );
+          if (widget.role.toLowerCase() == 'student') {
+            print('   → Navigating to /student-dashboard');
+            Navigator.pushReplacementNamed(context, '/student-dashboard');
+          } else {
+            print('   → Navigating to /teacher-dashboard');
+            Navigator.pushReplacementNamed(context, '/teacher-dashboard');
+          }
         }
-        return;
+      } else {
+        print('🔐 LOGIN FAILED: ${result['message']}');
+        if (result['needsVerification'] == true) {
+          if (mounted) {
+            Navigator.pushNamed(
+              context,
+              '/verify-email',
+              arguments: {'email': result['email']},
+            );
+          }
+          return;
+        }
+        setState(() => _errorMessage = result['message'] ?? 'Login failed');
       }
-      setState(() => _errorMessage = result['message']);
+    } catch (e, stacktrace) {
+      print('🔐 LOGIN EXCEPTION: $e');
+      print('🔐 STACKTRACE: $stacktrace');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'An error occurred: $e';
+        });
+      }
     }
   }
 

@@ -23,6 +23,28 @@ class AssignmentService {
     });
   }
 
+  Future<Map<String, dynamic>> editAssignment({
+    required String id,
+    required String title,
+    required String description,
+    required String deadline,
+  }) async {
+    return _api.post('assignments.php', {
+      'action': 'edit',
+      'id': id,
+      'title': title,
+      'description': description,
+      'deadline': deadline,
+    });
+  }
+
+  Future<Map<String, dynamic>> deleteAssignment(String id) async {
+    return _api.post('assignments.php', {
+      'action': 'delete',
+      'id': id,
+    });
+  }
+
   Future<Map<String, dynamic>> submitAssignment({
     required String assignmentId,
     required String filePath,

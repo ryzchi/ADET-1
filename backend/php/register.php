@@ -5,7 +5,10 @@ $input = requestBody();
 $name = sanitize($input['name'] ?? '');
 $email = sanitize($input['email'] ?? '');
 $password = $input['password'] ?? '';
-$role = sanitize($input['role'] ?? 'student');
+$role = strtolower(sanitize($input['role'] ?? 'student'));
+if ($role === 'faculty') {
+    $role = 'teacher';
+}
 
 if (!$name || !$email || !$password || !$role) {
     jsonResponse(['success' => false, 'message' => 'Missing required fields']);

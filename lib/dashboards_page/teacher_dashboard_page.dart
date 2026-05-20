@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:math';
+import '../pages/upload_material_page.dart';
+import '../pages/uploaded_material.dart';
 import '/security_service/auth_service.dart';
 
 class TeacherDashboardPage extends StatefulWidget {
@@ -16,9 +18,10 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
   int _selectedIndex = 0;
   bool _isMobile = false;
 
-  // ===== FUNCTIONAL DATA STORAGE =====
   List<Map<String, dynamic>> _students = [];
   List<Map<String, dynamic>> _announcements = [];
+  List<Map<String, dynamic>> _materials = [];
+  List<Map<String, dynamic>> _assignments = [];
 
   @override
   void initState() {
@@ -34,6 +37,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     if (studentsJson != null) {
       _students = List<Map<String, dynamic>>.from(jsonDecode(studentsJson));
     } else {
+      
       // Default data from your original code
       _students = [
         {
@@ -134,6 +138,79 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
       ];
       _saveAnnouncements();
     }
+
+    // Load materials
+    final materialsJson = prefs.getString('teacher_materials');
+    if (materialsJson != null) {
+      _materials = List<Map<String, dynamic>>.from(jsonDecode(materialsJson));
+    } else {
+      _materials = [
+        {
+          'id': '1',
+          'title': 'Quadratic Equations',
+          'subject': 'Mathematics',
+          'grade': 'Grade 10',
+          'date': 'Oct 25, 2024',
+          'format': 'PDF',
+          'color': 'blue',
+        },
+        {
+          'id': '2',
+          'title': 'Cell Division',
+          'subject': 'Science',
+          'grade': 'Grade 10',
+          'date': 'Oct 28, 2024',
+          'format': 'PDF',
+          'color': 'green',
+        },
+        {
+          'id': '3',
+          'title': 'Philippine Literature',
+          'subject': 'Filipino',
+          'grade': 'Grade 10',
+          'date': 'Nov 2, 2024',
+          'format': 'DOCX',
+          'color': 'orange',
+        },
+      ];
+      _saveMaterials();
+    }
+
+    // Load assignments
+    final assignmentsJson = prefs.getString('teacher_assignments');
+    if (assignmentsJson != null) {
+      _assignments = List<Map<String, dynamic>>.from(jsonDecode(assignmentsJson));
+    } else {
+      _assignments = [
+        {
+          'id': '1',
+          'title': 'Chapter 5 Exercises',
+          'description': 'Complete all exercises from page 120 to 130',
+          'deadline': 'Nov 1, 2024',
+          'subject': 'Mathematics',
+          'status': 'Active',
+        },
+        {
+          'id': '2',
+          'title': 'Research Project',
+          'description': 'Write a 5-page research paper on photosynthesis',
+          'deadline': 'Nov 5, 2024',
+          'subject': 'Science',
+          'status': 'Active',
+        },
+      ];
+      _saveAssignments();
+    }
+  }
+
+  Future<void> _saveMaterials() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('teacher_materials', jsonEncode(_materials));
+  }
+
+  Future<void> _saveAssignments() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('teacher_assignments', jsonEncode(_assignments));
   }
 
   Future<void> _saveStudents() async {
@@ -147,9 +224,17 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
   }
 
   Future<void> _logout() async {
-    await _authService.logout();
-    if (mounted) {
-      Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+    try {
+      await _authService.logout();
+      if (mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Logout failed: $e')),
+        );
+      }
     }
   }
 
@@ -438,9 +523,10 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
           _drawerItem(Icons.people_outline, 'Students', 1),
           _drawerItem(Icons.upload_file_outlined, 'Lesson Plans', 2),
           _drawerItem(Icons.description_outlined, 'Worksheets', 3),
-          _drawerItem(Icons.grade_outlined, 'Grades', 4),
-          _drawerItem(Icons.calendar_today_outlined, 'Attendance', 5),
-          _drawerItem(Icons.announcement_outlined, 'Announcements', 6),
+          _drawerItem(Icons.assignment_outlined, 'Assignments', 4),
+          _drawerItem(Icons.grade_outlined, 'Grades', 5),
+          _drawerItem(Icons.calendar_today_outlined, 'Attendance', 6),
+          _drawerItem(Icons.announcement_outlined, 'Announcements', 7),
           const Spacer(),
           const Divider(),
           ListTile(
@@ -507,9 +593,10 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
           _sidebarItem(Icons.people_outline, 'Students', 1),
           _sidebarItem(Icons.upload_file_outlined, 'Lesson Plans', 2),
           _sidebarItem(Icons.description_outlined, 'Worksheets', 3),
-          _sidebarItem(Icons.grade_outlined, 'Grades', 4),
-          _sidebarItem(Icons.calendar_today_outlined, 'Attendance', 5),
-          _sidebarItem(Icons.announcement_outlined, 'Announcements', 6),
+          _sidebarItem(Icons.assignment_outlined, 'Assignments', 4),
+          _sidebarItem(Icons.grade_outlined, 'Grades', 5),
+          _sidebarItem(Icons.calendar_today_outlined, 'Attendance', 6),
+          _sidebarItem(Icons.announcement_outlined, 'Announcements', 7),
           const Spacer(),
           const Divider(),
           ListTile(
@@ -556,10 +643,12 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
       case 3:
         return _buildWorksheets();
       case 4:
-        return _buildGrades();
+        return _buildAssignments();
       case 5:
-        return _buildAttendance();
+        return _buildGrades();
       case 6:
+        return _buildAttendance();
+      case 7:
         return _buildAnnouncements();
       default:
         return _buildOverview();
@@ -1326,10 +1415,11 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
   // ==================== LESSON PLANS PAGE ====================
   Widget _buildLessonPlans() {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(_isMobile ? 16 : 24),
+      padding: EdgeInsets.fromLTRB(_isMobile ? 16 : 24, 0, _isMobile ? 16 : 24, _isMobile ? 16 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          SizedBox(height: _isMobile ? 16 : 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1342,9 +1432,20 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const UploadMaterialPage(),
+                    ),
+                  ).then((uploadedMaterial) {
+                    if (uploadedMaterial is UploadedMaterial) {
+                      _addUploadedMaterial(uploadedMaterial);
+                    }
+                  });
+                },
                 icon: const Icon(Icons.upload_file, size: 18),
-                label: const Text('Upload New'),
+                label: const Text('Upload File'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0d2b5c),
                   foregroundColor: Colors.white,
@@ -1361,46 +1462,15 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
             spacing: 16,
             runSpacing: 16,
             children: [
-              _lessonPlanCard(
-                'Quadratic Equations',
-                'Mathematics',
-                'Grade 10',
-                'Oct 25, 2024',
-                'PDF',
-                Colors.blue,
-              ),
-              _lessonPlanCard(
-                'Cell Division',
-                'Science',
-                'Grade 10',
-                'Oct 28, 2024',
-                'PDF',
-                Colors.green,
-              ),
-              _lessonPlanCard(
-                'Philippine Literature',
-                'Filipino',
-                'Grade 10',
-                'Nov 2, 2024',
-                'DOCX',
-                Colors.orange,
-              ),
-              _lessonPlanCard(
-                'World War II',
-                'History',
-                'Grade 10',
-                'Nov 5, 2024',
-                'PDF',
-                Colors.red,
-              ),
-              _lessonPlanCard(
-                'Grammar Review',
-                'English',
-                'Grade 10',
-                'Nov 8, 2024',
-                'DOCX',
-                Colors.teal,
-              ),
+              ..._materials.map((material) => _lessonPlanCard(
+                material['id'],
+                material['title'],
+                material['subject'],
+                material['grade'],
+                material['date'],
+                material['format'],
+                Color(int.parse('0xFF${_getColorHex(material['color'])}')),
+              )),
             ],
           ),
         ],
@@ -1408,7 +1478,23 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     );
   }
 
+  String _getColorHex(String colorName) {
+    switch (colorName) {
+      case 'green':
+        return '4CAF50';
+      case 'orange':
+        return 'FF9800';
+      case 'red':
+        return 'F44336';
+      case 'teal':
+        return '009688';
+      default:
+        return '2196F3'; // blue
+    }
+  }
+
   Widget _lessonPlanCard(
+    String id,
     String title,
     String subject,
     String grade,
@@ -1445,13 +1531,29 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                 ),
               ),
               const Spacer(),
-              IconButton(
+              PopupMenuButton<String>(
                 icon: const Icon(
                   Icons.more_vert,
                   size: 18,
                   color: Color(0xFF94A3B8),
                 ),
-                onPressed: () {},
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    _showEditMaterialDialog(id, title, subject, format);
+                  } else if (value == 'delete') {
+                    _deleteMaterial(id);
+                  } else if (value == 'download') {
+                    _downloadMaterial(id, title);
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  const PopupMenuItem(value: 'download', child: Text('Download')),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Delete', style: TextStyle(color: Colors.red)),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1496,7 +1598,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () => _showMaterialDetails(title, subject, date, id),
                   icon: const Icon(Icons.visibility, size: 16),
                   label: const Text('View', style: TextStyle(fontSize: 12)),
                   style: OutlinedButton.styleFrom(
@@ -1511,7 +1613,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () => _downloadMaterial(id, title),
                   icon: const Icon(Icons.download, size: 16),
                   label: const Text('Download', style: TextStyle(fontSize: 12)),
                   style: OutlinedButton.styleFrom(
@@ -1524,6 +1626,503 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditMaterialDialog(String id, String title, String subject, String format) {
+    final titleController = TextEditingController(text: title);
+    final subjectController = TextEditingController(text: subject);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Learning Material'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              decoration: const InputDecoration(labelText: 'Title'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: subjectController,
+              decoration: const InputDecoration(labelText: 'Subject'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                final index = _materials.indexWhere((m) => m['id'] == id);
+                if (index != -1) {
+                  _materials[index]['title'] = titleController.text;
+                  _materials[index]['subject'] = subjectController.text;
+                }
+              });
+              _saveMaterials();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Material updated successfully!')),
+              );
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteMaterial(String id) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Learning Material'),
+        content: const Text('Are you sure you want to delete this material?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _materials.removeWhere((m) => m['id'] == id);
+              });
+              _saveMaterials();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Material deleted successfully!')),
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _downloadMaterial(String id, String title) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Downloading $title...')),
+    );
+  }
+
+  void _showMaterialDetails(String title, String subject, String date, String id) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Material Details'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Title: $title', style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text('Subject: $subject'),
+            const SizedBox(height: 8),
+            Text('Date: $date'),
+            const SizedBox(height: 8),
+            Text('ID: $id', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addUploadedMaterial(UploadedMaterial uploadedMaterial) {
+    final fileExtension = uploadedMaterial.fileName
+        .split('.')
+        .last
+        .toUpperCase();
+    
+    final colorMap = {
+      'PDF': 'blue',
+      'DOCX': 'green',
+      'DOC': 'green',
+      'PPTX': 'orange',
+      'PPT': 'orange',
+      'MP4': 'red',
+      'AVI': 'red',
+      'MOV': 'red',
+    };
+
+    setState(() {
+      _materials.insert(0, {
+        'id': DateTime.now().millisecondsSinceEpoch.toString(),
+        'title': uploadedMaterial.title,
+        'subject': uploadedMaterial.subject,
+        'grade': 'Grade 10',
+        'date': DateTime.now().toString().split(' ')[0],
+        'format': fileExtension,
+        'color': colorMap[fileExtension] ?? 'blue',
+        'fileName': uploadedMaterial.fileName,
+      });
+    });
+    
+    _saveMaterials();
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${uploadedMaterial.title} added to Lesson Plans!')),
+      );
+    }
+  }
+
+  // ==================== ASSIGNMENTS PAGE ====================
+  Widget _buildAssignments() {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(_isMobile ? 16 : 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Assignments',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1a2b4a),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: _showCreateAssignmentDialog,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Create Assignment'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0d2b5c),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  elevation: 0,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          ..._assignments.map((assignment) => _assignmentCard(assignment)),
+        ],
+      ),
+    );
+  }
+
+  Widget _assignmentCard(Map<String, dynamic> assignment) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      assignment['title'],
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1a2b4a),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      assignment['subject'],
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  assignment['status'],
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            assignment['description'],
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.calendar_today, size: 16, color: Colors.orange),
+              const SizedBox(width: 8),
+              Text(
+                'Deadline: ${assignment['deadline']}',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _showEditAssignmentDialog(assignment),
+                icon: const Icon(Icons.edit, size: 16),
+                label: const Text('Edit'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0d2b5c),
+                  side: const BorderSide(color: Color(0xFF0d2b5c)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: () => _deleteAssignment(assignment['id']),
+                icon: const Icon(Icons.delete, size: 16),
+                label: const Text('Delete'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateAssignmentDialog() {
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final deadlineController = TextEditingController();
+    final subjectController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create New Assignment'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(
+                  labelText: 'Assignment Title',
+                  hintText: 'e.g., Chapter 5 Exercises',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: subjectController,
+                decoration: const InputDecoration(
+                  labelText: 'Subject',
+                  hintText: 'e.g., Mathematics',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  hintText: 'Enter assignment details...',
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: deadlineController,
+                decoration: const InputDecoration(
+                  labelText: 'Deadline',
+                  hintText: 'e.g., Nov 1, 2024',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (titleController.text.isNotEmpty &&
+                  descriptionController.text.isNotEmpty &&
+                  deadlineController.text.isNotEmpty &&
+                  subjectController.text.isNotEmpty) {
+                setState(() {
+                  _assignments.add({
+                    'id': DateTime.now().millisecondsSinceEpoch.toString(),
+                    'title': titleController.text,
+                    'description': descriptionController.text,
+                    'deadline': deadlineController.text,
+                    'subject': subjectController.text,
+                    'status': 'Active',
+                  });
+                });
+                _saveAssignments();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Assignment created successfully!'),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please fill all fields')),
+                );
+              }
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditAssignmentDialog(Map<String, dynamic> assignment) {
+    final titleController = TextEditingController(text: assignment['title']);
+    final descriptionController =
+        TextEditingController(text: assignment['description']);
+    final deadlineController = TextEditingController(text: assignment['deadline']);
+    final subjectController = TextEditingController(text: assignment['subject']);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Assignment'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(labelText: 'Assignment Title'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: subjectController,
+                decoration: const InputDecoration(labelText: 'Subject'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(labelText: 'Description'),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: deadlineController,
+                decoration: const InputDecoration(labelText: 'Deadline'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                final index = _assignments.indexWhere(
+                  (a) => a['id'] == assignment['id'],
+                );
+                if (index != -1) {
+                  _assignments[index]['title'] = titleController.text;
+                  _assignments[index]['description'] = descriptionController.text;
+                  _assignments[index]['deadline'] = deadlineController.text;
+                  _assignments[index]['subject'] = subjectController.text;
+                }
+              });
+              _saveAssignments();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Assignment updated successfully!')),
+              );
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteAssignment(String id) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Assignment'),
+        content: const Text('Are you sure you want to delete this assignment?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _assignments.removeWhere((a) => a['id'] == id);
+              });
+              _saveAssignments();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Assignment deleted successfully!')),
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
           ),
         ],
       ),
