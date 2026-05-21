@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '/security_service/auth_service.dart';
+import 'package:file_picker/file_picker.dart';
 
 class StudentDashboardPage extends StatefulWidget {
   const StudentDashboardPage({super.key});
@@ -1012,129 +1013,274 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
   );
 }
 
-  Widget _assignmentCard(
-    String title,
-    String subject,
-    String due,
-    String description,
-    double progress,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+Widget _assignmentCard(
+  String title,
+  String subject,
+  String due,
+  String description,
+  double progress,
+  Color color,
+) {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 20),
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(
+        color: const Color(0xFFE2E8F0),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.assignment, color: color, size: 24),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.03),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(16),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                        color: Color(0xFF1a2b4a),
-                      ),
+              child: Icon(
+                Icons.assignment,
+                color: color,
+                size: 30,
+              ),
+            ),
+
+            const SizedBox(width: 16),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: Color(0xFF1a2b4a),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
+                  ),
+
+                  const SizedBox(height: 6),
+
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.1),
+                      borderRadius:
+                          BorderRadius.circular(20),
+                    ),
+                    child: Text(
                       subject,
                       style: TextStyle(
                         color: color,
                         fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                color: progress == 1.0
+                    ? Colors.green.withOpacity(0.1)
+                    : progress > 0
+                        ? Colors.orange
+                            .withOpacity(0.1)
+                        : Colors.grey.withOpacity(0.1),
+                borderRadius:
+                    BorderRadius.circular(20),
+              ),
+              child: Text(
+                progress == 1.0
+                    ? 'Completed'
+                    : progress > 0
+                        ? 'In Progress'
+                        : 'Not Started',
+                style: TextStyle(
+                  color: progress == 1.0
+                      ? Colors.green
+                      : progress > 0
+                          ? Colors.orange
+                          : Colors.grey,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 20),
+
+        Text(
+          description,
+          style: TextStyle(
+            color: Colors.grey.shade700,
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        LinearProgressIndicator(
+          value: progress,
+          minHeight: 8,
+          borderRadius: BorderRadius.circular(20),
+          backgroundColor: Colors.grey.shade200,
+          valueColor:
+              AlwaysStoppedAnimation<Color>(
+            color,
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        Row(
+          mainAxisAlignment:
+              MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '${(progress * 100).toInt()}% complete',
+              style: TextStyle(
+                color: Colors.grey.shade500,
+                fontSize: 12,
+              ),
+            ),
+
+            Text(
+              due,
+              style: TextStyle(
+                color: Colors.red.shade400,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  FilePickerResult? result =
+                      await FilePicker.platform.pickFiles();
+
+                  if (result != null) {
+                    final file = result.files.first;
+
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(
+                      SnackBar(
+                        backgroundColor:
+                            const Color(0xFF0d2b5c),
+                        content: Text(
+                          'Submitted: ${file.name}',
+                        ),
+                      ),
+                    );
+
+                    setState(() {});
+                  }
+                },
+
+                icon: const Icon(
+                  Icons.upload_file,
+                  size: 20,
                 ),
-                decoration: BoxDecoration(
-                  color: progress == 1.0
-                      ? Colors.green.withOpacity(0.1)
-                      : progress > 0
-                      ? Colors.orange.withOpacity(0.1)
-                      : Colors.grey.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+
+                label: const Text(
+                  'Submit Assignment',
                 ),
-                child: Text(
-                  progress == 1.0
-                      ? 'Completed'
-                      : progress > 0
-                      ? 'In Progress'
-                      : 'Not Started',
-                  style: TextStyle(
-                    color: progress == 1.0
-                        ? Colors.green
-                        : progress > 0
-                        ? Colors.orange
-                        : Colors.grey,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+
+                style:
+                    ElevatedButton.styleFrom(
+                  backgroundColor:
+                      const Color(0xFF2563EB),
+                  foregroundColor:
+                      Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(
+                    vertical: 16,
+                  ),
+                  elevation: 0,
+                  shape:
+                      RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(
+                            14),
                   ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            description,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-          ),
-          const SizedBox(height: 16),
-          LinearProgressIndicator(
-            value: progress,
-            backgroundColor: Colors.grey.shade200,
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-            borderRadius: BorderRadius.circular(4),
-            minHeight: 8,
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '${(progress * 100).toInt()}% complete',
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+            ),
+
+            const SizedBox(width: 12),
+
+            OutlinedButton.icon(
+              onPressed: () {},
+
+              icon: const Icon(
+                Icons.remove_red_eye,
+                size: 20,
               ),
-              Text(
-                due,
-                style: TextStyle(
-                  color: Colors.red.shade400,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+
+              label: const Text('View'),
+
+              style:
+                  OutlinedButton.styleFrom(
+                foregroundColor:
+                    const Color(0xFF2563EB),
+                side: const BorderSide(
+                  color: Color(0xFF2563EB),
+                ),
+                padding:
+                    const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 16,
+                ),
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(
+                          14),
                 ),
               ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
 
-  // ==================== QUIZZES PAGE ====================
   Widget _buildQuizzes() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
