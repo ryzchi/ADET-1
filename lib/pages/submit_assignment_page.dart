@@ -13,18 +13,13 @@ class SubmitAssignmentPage extends StatefulWidget {
   });
 
   @override
-  State<SubmitAssignmentPage> createState() =>
-      _SubmitAssignmentPageState();
+  State<SubmitAssignmentPage> createState() => _SubmitAssignmentPageState();
 }
 
-class _SubmitAssignmentPageState
-    extends State<SubmitAssignmentPage> {
+class _SubmitAssignmentPageState extends State<SubmitAssignmentPage> {
   File? file;
-
   bool loading = false;
-
-  final AssignmentService _assignmentService =
-      AssignmentService();
+  final AssignmentService _assignmentService = AssignmentService();
 
   Future<void> pickFile() async {
     final result = await FilePicker.platform.pickFiles();
@@ -77,8 +72,9 @@ class _SubmitAssignmentPageState
           content: Text('Assignment submitted successfully'),
         ),
       );
-
-      Navigator.pop(context);
+      
+      // Return true to indicate success
+      Navigator.pop(context, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -95,6 +91,8 @@ class _SubmitAssignmentPageState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Submit Assignment'),
+        backgroundColor: const Color(0xFF0d2b5c),
+        foregroundColor: Colors.white,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -105,24 +103,50 @@ class _SubmitAssignmentPageState
               onPressed: pickFile,
               icon: const Icon(Icons.upload_file),
               label: const Text('Pick File'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
             ),
-
             const SizedBox(height: 15),
-
-            Text(
-              file != null
-                  ? file!.path.split('/').last
-                  : 'No file selected',
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.insert_drive_file, color: Colors.grey.shade600),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      file != null
+                          ? file!.path.split('/').last
+                          : 'No file selected',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  ),
+                ],
+              ),
             ),
-
             const SizedBox(height: 25),
-
             ElevatedButton(
               onPressed: loading ? null : uploadSubmission,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0d2b5c),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
               child: Text(
-                loading
-                    ? 'Uploading...'
-                    : 'Submit Assignment',
+                loading ? 'Uploading...' : 'Submit Assignment',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
           ],

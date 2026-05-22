@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
-import '/security_service/auth_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+import '/security_service/auth_service.dart';
+import '../pages/submit_assignment_page.dart';
+import '../pages/student_submission_status_page.dart';
 
 class StudentDashboardPage extends StatefulWidget {
   const StudentDashboardPage({super.key});
@@ -11,29 +16,159 @@ class StudentDashboardPage extends StatefulWidget {
 
 class _StudentDashboardPageState extends State<StudentDashboardPage> {
   final _authService = AuthService();
+  
   int _selectedIndex = 0;
   bool _isMobile = false;
+  bool _isLoadingAssignments = false;
+  
+  List<Map<String, dynamic>> _assignments = [];
+  List<Map<String, dynamic>> _submissions = [];
 
-  final List<Map<String, String>> _demoAssignments = [
-    {
-      'title': 'Math Homework',
-      'subject': 'Mathematics',
-      'deadline': 'May 30, 2026',
-      'description': 'Complete problems 1-20 on page 42.',
-    },
-    {
-      'title': 'Science Project',
-      'subject': 'Science',
-      'deadline': 'June 2, 2026',
-      'description': 'Build a simple volcano model and write a short report.',
-    },
-    {
-      'title': 'English Essay',
-      'subject': 'English',
-      'deadline': 'June 5, 2026',
-      'description': 'Write a 300-word essay on your favorite book.',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadAssignmentsWithStatus();
+  }
+
+  Future<void> _loadAssignmentsWithStatus() async {
+    setState(() {
+      _isLoadingAssignments = true;
+    });
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      final assignmentsJson = prefs.getString('student_assignments');
+      if (assignmentsJson != null) {
+        _assignments = List<Map<String, dynamic>>.from(jsonDecode(assignmentsJson));
+      } else {
+        _assignments = [
+          {
+            'id': '1',
+            'title': 'Math Homework',
+            'subject': 'Mathematics',
+            'deadline': 'May 30, 2026',
+            'description': 'Complete problems 1-20 on page 42.',
+          },
+          {
+            'id': '2',
+            'title': 'Science Project',
+            'subject': 'Science',
+            'deadline': 'June 2, 2026',
+            'description': 'Build a simple volcano model and write a short report.',
+          },
+          {
+            'id': '3',
+            'title': 'English Essay',
+            'subject': 'English',
+            'deadline': 'June 5, 2026',
+            'description': 'Write a 300-word essay on your favorite book.',
+          },
+          {
+            'id': '4',
+            'title': 'History Timeline',
+            'subject': 'History',
+            'deadline': 'June 8, 2026',
+            'description': 'Create a timeline of World War II events.',
+          },
+        ];
+        await _saveAssignments();
+      }
+      
+      final studentEmail = _authService.currentUserEmail ?? 'student';
+      final submissionsKey = 'submissions_${studentEmail.replaceAll('.', '_')}';
+      final submissionsJson = prefs.getString(submissionsKey);
+      
+      if (submissionsJson != null) {
+        _submissions = List<Map<String, dynamic>>.from(jsonDecode(submissionsJson));
+      } else {
+        _submissions = [];
+      }
+      
+    } catch (e) {
+      print('Error loading data: $e');
+    } finally {
+      setState(() {
+        _isLoadingAssignments = false;
+      });
+    }
+  }
+
+  Future<void> _saveAssignments() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('student_assignments', jsonEncode(_assignments));
+  }
+
+  Future<void> _saveSubmissions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final studentEmail = _authService.currentUserEmail ?? 'student';
+    final submissionsKey = 'submissions_${studentEmail.replaceAll('.', '_')}';
+    await prefs.setString(submissionsKey, jsonEncode(_submissions));
+  }
+
+  bool _isAssignmentSubmitted(String assignmentId) {
+    return _submissions.any((sub) => sub['assignment_id'] == assignmentId);
+  }
+
+  Map<String, dynamic>? _getSubmission(String assignmentId) {
+    try {
+      return _submissions.firstWhere((sub) => sub['assignment_id'] == assignmentId);
+    } catch (e) {
+      return null;
+    }
+  }
+      Future<void> _submitAssignment(String assignmentId, String comment, String fileName, Uint8List? fileBytes) async {
+        final prefs = await SharedPreferences.getInstance();
+        final studentEmail = _authService.currentUserEmail ?? 'student';
+        final studentName = _authService.currentUserName ?? 'Student';
+        
+        // Get assignment title
+        String assignmentTitle = '';
+        try {
+          final assignment = _assignments.firstWhere((a) => a['id'] == assignmentId);
+          assignmentTitle = assignment['title'] ?? 'Unknown';
+        } catch (e) {
+          assignmentTitle = 'Unknown';
+        }
+        
+        final submission = {
+          'id': DateTime.now().millisecondsSinceEpoch.toString(),
+          'assignment_id': assignmentId,
+          'assignment_title': assignmentTitle,
+          'student_email': studentEmail,
+          'student_name': studentName,
+          'status': 'Pending',
+          'feedback': '',
+          'comment': comment,
+          'file_name': fileName,
+          'file_size': fileBytes?.length ?? 0,
+          'submitted_at': DateTime.now().toIso8601String(),
+        };
+        
+        // 1. SAVE TO GLOBAL SUBMISSIONS (para makita ng teacher)
+        final globalSubmissionsJson = prefs.getString('all_submissions');
+        List<Map<String, dynamic>> allSubmissions = [];
+        if (globalSubmissionsJson != null) {
+          allSubmissions = List<Map<String, dynamic>>.from(jsonDecode(globalSubmissionsJson));
+        }
+        allSubmissions.add(submission);
+        await prefs.setString('all_submissions', jsonEncode(allSubmissions));
+        
+        // 2. SAVE TO STUDENT-SPECIFIC SUBMISSIONS (para sa student history)
+        final studentSubmissionsKey = 'submissions_${studentEmail.replaceAll('.', '_')}';
+        final studentSubmissionsJson = prefs.getString(studentSubmissionsKey);
+        List<Map<String, dynamic>> studentSubmissions = [];
+        if (studentSubmissionsJson != null) {
+          studentSubmissions = List<Map<String, dynamic>>.from(jsonDecode(studentSubmissionsJson));
+        }
+        studentSubmissions.add(submission);
+        await prefs.setString(studentSubmissionsKey, jsonEncode(studentSubmissions));
+        
+        // Update local state
+        setState(() {
+          _submissions.add(submission);
+        });
+      }
 
   Future<void> _logout() async {
     try {
@@ -48,6 +183,33 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
         );
       }
     }
+  }
+
+  void _navigateToSubmitAssignment(String assignmentId, String title) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => _SubmitAssignmentPage(
+          assignmentId: assignmentId,
+          assignmentTitle: title,
+          onSubmit: (comment, fileName, fileBytes) async {
+            await _submitAssignment(assignmentId, comment, fileName, fileBytes);
+          },
+        ),
+      ),
+    ).then((_) => _loadAssignmentsWithStatus());
+  }
+
+  void _navigateToSubmissionStatus() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => _SubmissionStatusPage(
+          submissions: _submissions,
+          assignments: _assignments,
+        ),
+      ),
+    ).then((_) => _loadAssignmentsWithStatus());
   }
 
   @override
@@ -195,7 +357,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
         ),
       ),
-      tileColor: isSelected ? const Color(0xFF0d2b5c).withOpacity(0.08) : null,
+      tileColor: isSelected ? const Color(0xFF0d2b5c).withValues(alpha: 0.08) : null,
       onTap: () {
         setState(() => _selectedIndex = index);
         Navigator.pop(context);
@@ -263,7 +425,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
         ),
       ),
-      tileColor: isSelected ? const Color(0xFF0d2b5c).withOpacity(0.08) : null,
+      tileColor: isSelected ? const Color(0xFF0d2b5c).withValues(alpha: 0.08) : null,
       onTap: () => setState(() => _selectedIndex = index),
     );
   }
@@ -285,14 +447,15 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     }
   }
 
-  // ==================== OVERVIEW PANEL (SPRINT 2) ====================
   Widget _buildOverview() {
+    final pendingCount = _assignments.where((a) => !_isAssignmentSubmitted(a['id'])).length;
+    final submittedCount = _submissions.length;
+    
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Welcome Header
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -321,7 +484,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                       Text(
                         'Track your academic progress and stay updated with your classes.',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha: 0.8),
                           fontSize: 14,
                         ),
                       ),
@@ -332,7 +495,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -346,7 +509,6 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           ),
           const SizedBox(height: 24),
 
-          // Stats Grid - Responsive
           LayoutBuilder(
             builder: (context, constraints) {
               final crossAxisCount = constraints.maxWidth < 600 ? 2 : 4;
@@ -358,41 +520,16 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                 mainAxisSpacing: 12,
                 childAspectRatio: 1.3,
                 children: [
-                  _statCard(
-                    'Assignments',
-                    '5',
-                    'Pending',
-                    Colors.orange,
-                    Icons.assignment,
-                  ),
-                  _statCard(
-                    'Quizzes',
-                    '3',
-                    'Available',
-                    Colors.blue,
-                    Icons.quiz,
-                  ),
-                  _statCard(
-                    'Attendance',
-                    '92%',
-                    'Present',
-                    Colors.green,
-                    Icons.calendar_today,
-                  ),
-                  _statCard(
-                    'Grade Average',
-                    '87%',
-                    'B+',
-                    const Color(0xFF0d2b5c),
-                    Icons.grade,
-                  ),
+                  _statCard('Assignments', '$pendingCount', 'Pending', Colors.orange, Icons.assignment),
+                  _statCard('Submitted', '$submittedCount', 'Done', Colors.green, Icons.check_circle),
+                  _statCard('Attendance', '92%', 'Present', Colors.blue, Icons.calendar_today),
+                  _statCard('Grade Average', '87%', 'B+', const Color(0xFF0d2b5c), Icons.grade),
                 ],
               );
             },
           ),
           const SizedBox(height: 24),
 
-          // Two Column Layout - Responsive
           LayoutBuilder(
             builder: (context, constraints) {
               if (constraints.maxWidth < 700) {
@@ -403,8 +540,6 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                     _buildUpcomingQuizzes(),
                     const SizedBox(height: 16),
                     _buildAttendanceSummary(),
-                    const SizedBox(height: 16),
-                    _buildAnnouncementsPreview(),
                   ],
                 );
               }
@@ -419,33 +554,22 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
             },
           ),
           const SizedBox(height: 16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth < 700) {
-                return const SizedBox.shrink();
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _buildAttendanceSummary()),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildAnnouncementsPreview()),
-                ],
-              );
-            },
-          ),
+          if (_isMobile) _buildAttendanceSummary(),
+          if (!_isMobile)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _buildAttendanceSummary()),
+                const SizedBox(width: 16),
+                Expanded(child: _buildAnnouncementsPreview()),
+              ],
+            ),
         ],
       ),
     );
   }
 
-  Widget _statCard(
-    String title,
-    String value,
-    String subtitle,
-    Color color,
-    IconData icon,
-  ) {
+  Widget _statCard(String title, String value, String subtitle, Color color, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -462,7 +586,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -471,40 +595,25 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                child: Text(subtitle, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
               ),
             ],
           ),
           const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1a2b4a),
-            ),
-          ),
+          Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
           const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-          ),
+          Text(title, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
         ],
       ),
     );
   }
 
   Widget _buildRecentAssignments() {
+    final recentAssignments = _assignments.take(3).toList();
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -518,109 +627,40 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Recent Assignments',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1a2b4a),
-                ),
-              ),
+              const Text('Recent Assignments', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
               TextButton(
                 onPressed: () => setState(() => _selectedIndex = 1),
-                child: const Text(
-                  'View All',
-                  style: TextStyle(color: Color(0xFF007bff), fontSize: 12),
-                ),
+                child: const Text('View All', style: TextStyle(color: Color(0xFF007bff), fontSize: 12)),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          _assignmentItem(
-            'Math Problem Set',
-            'Mathematics',
-            'Due Oct 28',
-            Colors.orange,
-            0.75,
-          ),
-          const Divider(),
-          _assignmentItem(
-            'Science Lab Report',
-            'Science',
-            'Due Oct 30',
-            Colors.green,
-            0.30,
-          ),
-          const Divider(),
-          _assignmentItem(
-            'English Essay',
-            'English',
-            'Due Nov 2',
-            Colors.blue,
-            0.0,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _assignmentItem(
-    String title,
-    String subject,
-    String due,
-    Color color,
-    double progress,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                        color: Color(0xFF1a2b4a),
-                      ),
+          ...recentAssignments.map((assignment) {
+            final isSubmitted = _isAssignmentSubmitted(assignment['id']);
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(assignment['title'], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1a2b4a))),
+                        const SizedBox(height: 2),
+                        Text(assignment['subject'], style: TextStyle(color: isSubmitted ? Colors.green : Colors.orange, fontSize: 11, fontWeight: FontWeight.w600)),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subject,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  ),
+                  if (isSubmitted)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                      child: const Text('Submitted', style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.w600)),
                     ),
-                  ],
-                ),
+                ],
               ),
-              Text(
-                due,
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(
-            value: progress,
-            backgroundColor: Colors.grey.shade200,
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-            borderRadius: BorderRadius.circular(4),
-            minHeight: 6,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${(progress * 100).toInt()}% complete',
-            style: TextStyle(color: Colors.grey.shade400, fontSize: 10),
-          ),
+            );
+          }),
         ],
       ),
     );
@@ -640,55 +680,25 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Upcoming Quizzes',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1a2b4a),
-                ),
-              ),
+              const Text('Upcoming Quizzes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
               TextButton(
                 onPressed: () => setState(() => _selectedIndex = 2),
-                child: const Text(
-                  'View All',
-                  style: TextStyle(color: Color(0xFF007bff), fontSize: 12),
-                ),
+                child: const Text('View All', style: TextStyle(color: Color(0xFF007bff), fontSize: 12)),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          _quizPreviewItem(
-            'Algebra Quiz',
-            'Mathematics',
-            'Oct 28, 10:00 AM',
-            Colors.blue,
-          ),
+          _quizPreviewItem('Algebra Quiz', 'Mathematics', 'Oct 28, 10:00 AM', Colors.blue),
           const Divider(),
-          _quizPreviewItem(
-            'Cell Biology',
-            'Science',
-            'Oct 30, 1:00 PM',
-            Colors.green,
-          ),
+          _quizPreviewItem('Cell Biology', 'Science', 'Oct 30, 1:00 PM', Colors.green),
           const Divider(),
-          _quizPreviewItem(
-            'Grammar Test',
-            'English',
-            'Nov 2, 9:00 AM',
-            Colors.orange,
-          ),
+          _quizPreviewItem('Grammar Test', 'English', 'Nov 2, 9:00 AM', Colors.orange),
         ],
       ),
     );
   }
 
-  Widget _quizPreviewItem(
-    String title,
-    String subject,
-    String schedule,
-    Color color,
-  ) {
+  Widget _quizPreviewItem(String title, String subject, String schedule, Color color) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -696,10 +706,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           Container(
             width: 40,
             height: 40,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
             child: Icon(Icons.quiz, color: color, size: 20),
           ),
           const SizedBox(width: 12),
@@ -707,29 +714,12 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: Color(0xFF1a2b4a),
-                  ),
-                ),
-                Text(
-                  subject,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1a2b4a))),
+                Text(subject, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
-          Text(
-            schedule,
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
-          ),
+          Text(schedule, style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
         ],
       ),
     );
@@ -746,14 +736,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Attendance Summary',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1a2b4a),
-            ),
-          ),
+          const Text('Attendance Summary', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -761,64 +744,6 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               Expanded(child: _attendanceStat('Late', '2', Colors.orange)),
               Expanded(child: _attendanceStat('Absent', '1', Colors.red)),
             ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'This Month',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1a2b4a),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            children: List.generate(26, (index) {
-              final colors = [
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.orange,
-                Colors.green,
-                Colors.green,
-                Colors.red,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.orange,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.orange,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-                Colors.green,
-              ];
-              return Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: colors[index],
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Center(
-                  child: Text(
-                    '${index + 1}',
-                    style: const TextStyle(color: Colors.white, fontSize: 10),
-                  ),
-                ),
-              );
-            }),
           ),
         ],
       ),
@@ -828,18 +753,8 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
   Widget _attendanceStat(String label, String value, Color color) {
     return Column(
       children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-        ),
+        Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+        Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
       ],
     );
   }
@@ -858,63 +773,24 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Announcements',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1a2b4a),
-                ),
-              ),
+              const Text('Announcements', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  '2 New',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                child: const Text('2 New', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.w700)),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          _announcementItem(
-            'Midterm Exam Schedule',
-            'The midterm examination will be held on November 15-20, 2024. Please prepare accordingly.',
-            'Oct 25, 2024',
-            true,
-          ),
+          _announcementItem('Midterm Exam Schedule', 'The midterm examination will be held on November 15-20, 2024.', 'Oct 25, 2024', true),
           const Divider(),
-          _announcementItem(
-            'Science Fair 2024',
-            'Join us for the annual Science Fair on November 10. Register your projects by Nov 5.',
-            'Oct 24, 2024',
-            true,
-          ),
-          const Divider(),
-          _announcementItem(
-            'Holiday Break',
-            'Classes will resume on November 4 after the semestral break.',
-            'Oct 20, 2024',
-            false,
-          ),
+          _announcementItem('Science Fair 2024', 'Join us for the annual Science Fair on November 10.', 'Oct 24, 2024', true),
         ],
       ),
     );
   }
 
-  Widget _announcementItem(
-    String title,
-    String content,
-    String date,
-    bool isNew,
-  ) {
+  Widget _announcementItem(String title, String content, String date, bool isNew) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -925,10 +801,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               width: 8,
               height: 8,
               margin: const EdgeInsets.only(top: 6, right: 8),
-              decoration: const BoxDecoration(
-                color: Colors.red,
-                shape: BoxShape.circle,
-              ),
+              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
             )
           else
             const SizedBox(width: 16),
@@ -936,26 +809,11 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: Color(0xFF1a2b4a),
-                  ),
-                ),
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1a2b4a))),
                 const SizedBox(height: 4),
-                Text(
-                  content,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                Text(content, style: TextStyle(color: Colors.grey.shade600, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 4),
-                Text(
-                  date,
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 11),
-                ),
+                Text(date, style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
               ],
             ),
           ),
@@ -964,322 +822,197 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
-  // ==================== ASSIGNMENTS PAGE ====================
- Widget _buildAssignments() {
-  return SingleChildScrollView(
-    padding: EdgeInsets.all(_isMobile ? 16 : 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Assignments',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF1a2b4a),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Track and manage your assignments',
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-        ),
-        const SizedBox(height: 24),
-
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _demoAssignments.length,
-          itemBuilder: (context, index) {
-            final doc = _demoAssignments[index];
-
-            return Column(
-              children: [
-                _assignmentCard(
-                  doc['title']!,
-                  doc['subject'] ?? 'No Subject',
-                  'Due ${doc['deadline']}',
-                  doc['description'] ?? '',
-                  0.0,
-                  Colors.blue,
-                ),
-                const SizedBox(height: 12),
-              ],
-            );
-          },
-        )
-      ],
-    ),
-  );
-}
-
-Widget _assignmentCard(
-  String title,
-  String subject,
-  String due,
-  String description,
-  double progress,
-  Color color,
-) {
-  return Container(
-    margin: const EdgeInsets.only(bottom: 20),
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(
-        color: const Color(0xFFE2E8F0),
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.03),
-          blurRadius: 10,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(
-                Icons.assignment,
-                color: color,
-                size: 30,
-              ),
-            ),
-
-            const SizedBox(width: 16),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+  Widget _buildAssignments() {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(_isMobile ? 16 : 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: Color(0xFF1a2b4a),
-                    ),
-                  ),
-
-                  const SizedBox(height: 6),
-
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.1),
-                      borderRadius:
-                          BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      subject,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
+                  const Text('Assignments', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
+                  const SizedBox(height: 4),
+                  Text('Track and manage your assignments', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
                 ],
               ),
-            ),
+              TextButton.icon(
+                onPressed: _navigateToSubmissionStatus,
+                icon: const Icon(Icons.history, size: 18),
+                label: const Text('Submission History'),
+                style: TextButton.styleFrom(foregroundColor: const Color(0xFF0d2b5c)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
 
+          if (_isLoadingAssignments)
+            const Center(child: CircularProgressIndicator())
+          else if (_assignments.isEmpty)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 8,
+              padding: const EdgeInsets.all(40),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+              child: const Column(
+                children: [
+                  Icon(Icons.assignment_turned_in, size: 48, color: Colors.grey),
+                  SizedBox(height: 12),
+                  Text('No assignments yet'),
+                ],
               ),
-              decoration: BoxDecoration(
-                color: progress == 1.0
-                    ? Colors.green.withOpacity(0.1)
-                    : progress > 0
-                        ? Colors.orange
-                            .withOpacity(0.1)
-                        : Colors.grey.withOpacity(0.1),
-                borderRadius:
-                    BorderRadius.circular(20),
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _assignments.length,
+              itemBuilder: (context, index) {
+                final assignment = _assignments[index];
+                final isSubmitted = _isAssignmentSubmitted(assignment['id']);
+                final submission = _getSubmission(assignment['id']);
+                final submissionStatus = submission?['status'];
+                
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _assignmentCard(
+                    assignment['title'] ?? 'Untitled',
+                    assignment['subject'] ?? 'No Subject',
+                    assignment['deadline'] ?? 'No deadline',
+                    assignment['description'] ?? '',
+                    isSubmitted: isSubmitted,
+                    submissionStatus: submissionStatus,
+                    assignmentId: assignment['id'].toString(),
+                    assignmentTitle: assignment['title'].toString(),
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _assignmentCard(
+    String title,
+    String subject,
+    String due,
+    String description, {
+    bool isSubmitted = false,
+    String? submissionStatus,
+    required String assignmentId,
+    required String assignmentTitle,
+  }) {
+    Color getStatusColor() {
+      if (submissionStatus == 'Approved') return Colors.green;
+      if (submissionStatus == 'Rejected') return Colors.red;
+      return Colors.orange;
+    }
+    
+    String getStatusText() {
+      if (submissionStatus == 'Approved') return 'Approved';
+      if (submissionStatus == 'Rejected') return 'Rejected';
+      return 'Submitted';
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: (isSubmitted ? Colors.green : Colors.blue).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(isSubmitted ? Icons.check_circle : Icons.assignment, color: isSubmitted ? Colors.green : Colors.blue, size: 30),
               ),
-              child: Text(
-                progress == 1.0
-                    ? 'Completed'
-                    : progress > 0
-                        ? 'In Progress'
-                        : 'Not Started',
-                style: TextStyle(
-                  color: progress == 1.0
-                      ? Colors.green
-                      : progress > 0
-                          ? Colors.orange
-                          : Colors.grey,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1a2b4a))),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                      child: Text(subject, style: const TextStyle(color: Colors.blue, fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 20),
-
-        Text(
-          description,
-          style: TextStyle(
-            color: Colors.grey.shade700,
-            fontSize: 14,
-            height: 1.5,
+              if (isSubmitted)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(color: getStatusColor().withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(submissionStatus == 'Approved' ? Icons.check_circle : submissionStatus == 'Rejected' ? Icons.cancel : Icons.pending, size: 14, color: getStatusColor()),
+                      const SizedBox(width: 4),
+                      Text(getStatusText(), style: TextStyle(color: getStatusColor(), fontWeight: FontWeight.bold, fontSize: 12)),
+                    ],
+                  ),
+                ),
+            ],
           ),
-        ),
-
-        const SizedBox(height: 20),
-
-        LinearProgressIndicator(
-          value: progress,
-          minHeight: 8,
-          borderRadius: BorderRadius.circular(20),
-          backgroundColor: Colors.grey.shade200,
-          valueColor:
-              AlwaysStoppedAnimation<Color>(
-            color,
+          const SizedBox(height: 20),
+          Text(description, style: TextStyle(color: Colors.grey.shade700, fontSize: 14, height: 1.5)),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(due, style: TextStyle(color: Colors.red.shade400, fontSize: 12, fontWeight: FontWeight.w700)),
+            ],
           ),
-        ),
-
-        const SizedBox(height: 10),
-
-        Row(
-          mainAxisAlignment:
-              MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              '${(progress * 100).toInt()}% complete',
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 12,
-              ),
-            ),
-
-            Text(
-              due,
-              style: TextStyle(
-                color: Colors.red.shade400,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 24),
-
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  FilePickerResult? result =
-                      await FilePicker.platform.pickFiles();
-
-                  if (result != null) {
-                    final file = result.files.first;
-
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(
-                      SnackBar(
-                        backgroundColor:
-                            const Color(0xFF0d2b5c),
-                        content: Text(
-                          'Submitted: ${file.name}',
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: isSubmitted
+                    ? OutlinedButton.icon(
+                        onPressed: _navigateToSubmissionStatus,
+                        icon: const Icon(Icons.visibility, size: 20),
+                        label: const Text('View Submission'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0d2b5c),
+                          side: const BorderSide(color: Color(0xFF0d2b5c)),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                      )
+                    : ElevatedButton.icon(
+                        onPressed: () => _navigateToSubmitAssignment(assignmentId, assignmentTitle),
+                        icon: const Icon(Icons.upload_file, size: 20),
+                        label: const Text('Submit Assignment'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2563EB),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                       ),
-                    );
-
-                    setState(() {});
-                  }
-                },
-
-                icon: const Icon(
-                  Icons.upload_file,
-                  size: 20,
-                ),
-
-                label: const Text(
-                  'Submit Assignment',
-                ),
-
-                style:
-                    ElevatedButton.styleFrom(
-                  backgroundColor:
-                      const Color(0xFF2563EB),
-                  foregroundColor:
-                      Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(
-                    vertical: 16,
-                  ),
-                  elevation: 0,
-                  shape:
-                      RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(
-                            14),
-                  ),
-                ),
               ),
-            ),
-
-            const SizedBox(width: 12),
-
-            OutlinedButton.icon(
-              onPressed: () {},
-
-              icon: const Icon(
-                Icons.remove_red_eye,
-                size: 20,
-              ),
-
-              label: const Text('View'),
-
-              style:
-                  OutlinedButton.styleFrom(
-                foregroundColor:
-                    const Color(0xFF2563EB),
-                side: const BorderSide(
-                  color: Color(0xFF2563EB),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 16,
-                ),
-                shape:
-                    RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(
-                          14),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildQuizzes() {
     return SingleChildScrollView(
@@ -1287,89 +1020,27 @@ Widget _assignmentCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Available Quizzes',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1a2b4a),
-            ),
-          ),
+          const Text('Available Quizzes', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
           const SizedBox(height: 4),
-          Text(
-            'Take quizzes to test your knowledge',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-          ),
+          Text('Take quizzes to test your knowledge', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
           const SizedBox(height: 24),
-          _quizCard(
-            'Algebraic Expressions',
-            'Mathematics',
-            '15 items • 30 mins',
-            'Oct 28, 2024',
-            Colors.blue,
-            false,
-          ),
+          _quizCard('Algebraic Expressions', 'Mathematics', '15 items • 30 mins', 'Oct 28, 2024', Colors.blue, false),
           const SizedBox(height: 12),
-          _quizCard(
-            'Cell Structure & Function',
-            'Science',
-            '20 items • 40 mins',
-            'Oct 30, 2024',
-            Colors.green,
-            false,
-          ),
+          _quizCard('Cell Structure & Function', 'Science', '20 items • 40 mins', 'Oct 30, 2024', Colors.green, false),
           const SizedBox(height: 12),
-          _quizCard(
-            'Grammar & Composition',
-            'English',
-            '25 items • 45 mins',
-            'Nov 2, 2024',
-            Colors.orange,
-            false,
-          ),
+          _quizCard('Grammar & Composition', 'English', '25 items • 45 mins', 'Nov 2, 2024', Colors.orange, false),
           const SizedBox(height: 24),
-          const Text(
-            'Completed Quizzes',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1a2b4a),
-            ),
-          ),
+          const Text('Completed Quizzes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
           const SizedBox(height: 16),
-          _quizCard(
-            'Philippine Literature',
-            'Filipino',
-            '20 items',
-            'Oct 20, 2024',
-            Colors.teal,
-            true,
-            score: '92%',
-          ),
+          _quizCard('Philippine Literature', 'Filipino', '20 items', 'Oct 20, 2024', Colors.teal, true, score: '92%'),
           const SizedBox(height: 12),
-          _quizCard(
-            'World War II History',
-            'History',
-            '25 items',
-            'Oct 18, 2024',
-            Colors.red,
-            true,
-            score: '85%',
-          ),
+          _quizCard('World War II History', 'History', '25 items', 'Oct 18, 2024', Colors.red, true, score: '85%'),
         ],
       ),
     );
   }
 
-  Widget _quizCard(
-    String title,
-    String subject,
-    String info,
-    String date,
-    Color color,
-    bool isCompleted, {
-    String? score,
-  }) {
+  Widget _quizCard(String title, String subject, String info, String date, Color color, bool isCompleted, {String? score}) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1382,43 +1053,19 @@ Widget _assignmentCard(
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              isCompleted ? Icons.check_circle : Icons.quiz,
-              color: isCompleted ? Colors.green : color,
-              size: 28,
-            ),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+            child: Icon(isCompleted ? Icons.check_circle : Icons.quiz, color: isCompleted ? Colors.green : color, size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                    color: Color(0xFF1a2b4a),
-                  ),
-                ),
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Color(0xFF1a2b4a))),
                 const SizedBox(height: 4),
-                Text(
-                  subject,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(subject, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                Text(
-                  info,
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                ),
+                Text(info, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
               ],
             ),
           ),
@@ -1427,53 +1074,23 @@ Widget _assignmentCard(
             children: [
               if (isCompleted && score != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    score,
-                    style: const TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                  child: Text(score, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w700)),
                 )
               else
-                Text(
-                  date,
-                  style: TextStyle(
-                    color: Colors.red.shade400,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(date, style: TextStyle(color: Colors.red.shade400, fontSize: 12, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               ElevatedButton(
                 onPressed: isCompleted ? null : () {},
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isCompleted ? Colors.grey.shade300 : color,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   elevation: 0,
                 ),
-                child: Text(
-                  isCompleted ? 'Done' : 'Start',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: Text(isCompleted ? 'Done' : 'Start', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -1482,125 +1099,25 @@ Widget _assignmentCard(
     );
   }
 
-  // ==================== ATTENDANCE PAGE ====================
   Widget _buildAttendance() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Attendance Record',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1a2b4a),
-            ),
-          ),
+          const Text('Attendance Record', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
           const SizedBox(height: 4),
-          Text(
-            'View your attendance history',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-          ),
+          Text('View your attendance history', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
           const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE2E8F0))),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    _attendanceBigStat('23', 'Present', Colors.green),
-                    _attendanceBigStat('2', 'Late', Colors.orange),
-                    _attendanceBigStat('1', 'Absent', Colors.red),
-                    _attendanceBigStat('92%', 'Rate', const Color(0xFF0d2b5c)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'October 2024',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1a2b4a),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildAttendanceCalendar(),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Recent History',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1a2b4a),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _attendanceHistoryItem(
-                  'Oct 25, 2024',
-                  'Present',
-                  'On time',
-                  Colors.green,
-                ),
-                const Divider(),
-                _attendanceHistoryItem(
-                  'Oct 24, 2024',
-                  'Present',
-                  'On time',
-                  Colors.green,
-                ),
-                const Divider(),
-                _attendanceHistoryItem(
-                  'Oct 23, 2024',
-                  'Late',
-                  'Arrived 15 mins late',
-                  Colors.orange,
-                ),
-                const Divider(),
-                _attendanceHistoryItem(
-                  'Oct 22, 2024',
-                  'Present',
-                  'On time',
-                  Colors.green,
-                ),
-                const Divider(),
-                _attendanceHistoryItem(
-                  'Oct 20, 2024',
-                  'Absent',
-                  'Sick leave',
-                  Colors.red,
-                ),
+                _attendanceBigStat('23', 'Present', Colors.green),
+                _attendanceBigStat('2', 'Late', Colors.orange),
+                _attendanceBigStat('1', 'Absent', Colors.red),
+                _attendanceBigStat('92%', 'Rate', const Color(0xFF0d2b5c)),
               ],
             ),
           ),
@@ -1613,242 +1130,41 @@ Widget _assignmentCard(
     return Expanded(
       child: Column(
         children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
+          Text(value, style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: color)),
           const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-          ),
+          Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
         ],
       ),
     );
   }
 
-  Widget _buildAttendanceCalendar() {
-    final days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    final status = [
-      Colors.green,
-      Colors.green,
-      Colors.green,
-      Colors.orange,
-      Colors.green,
-      null,
-      null,
-      Colors.green,
-      Colors.green,
-      Colors.green,
-      Colors.green,
-      Colors.green,
-      null,
-      null,
-      Colors.green,
-      Colors.red,
-      Colors.green,
-      Colors.green,
-      Colors.green,
-      null,
-      null,
-      Colors.green,
-      Colors.green,
-      Colors.orange,
-      Colors.green,
-      Colors.green,
-      null,
-      null,
-    ];
-
-    return Column(
-      children: [
-        Row(
-          children: days
-              .map(
-                (d) => Expanded(
-                  child: Center(
-                    child: Text(
-                      d,
-                      style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              )
-              .toList(),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: List.generate(25, (index) {
-            final s = status[index];
-            return Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: s ?? Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: s != null
-                  ? Center(
-                      child: Text(
-                        '${index + 1}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    )
-                  : null,
-            );
-          }),
-        ),
-      ],
-    );
-  }
-
-  Widget _attendanceHistoryItem(
-    String date,
-    String status,
-    String note,
-    Color color,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  date,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-                Text(
-                  note,
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              status,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ==================== ANNOUNCEMENTS PAGE ====================
   Widget _buildAnnouncements() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Announcements',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1a2b4a),
-            ),
-          ),
+          const Text('Announcements', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
           const SizedBox(height: 4),
-          Text(
-            'Stay updated with school news',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-          ),
+          Text('Stay updated with school news', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
           const SizedBox(height: 24),
-          _announcementCard(
-            'Midterm Exam Schedule',
-            'The midterm examination will be held on November 15-20, 2024. All students must bring their school ID and examination permit. Please review the schedule posted on the bulletin board.',
-            'Oct 25, 2024',
-            Colors.blue,
-            true,
-          ),
+          _announcementCard('Midterm Exam Schedule', 'The midterm examination will be held on November 15-20, 2024.', 'Oct 25, 2024', Colors.blue, true),
           const SizedBox(height: 12),
-          _announcementCard(
-            'Science Fair 2024',
-            'Join us for the annual Science Fair on November 10, 2024. Students are encouraged to showcase their innovative projects. Registration deadline is November 5. Prizes will be awarded to the top 3 projects.',
-            'Oct 24, 2024',
-            Colors.green,
-            true,
-          ),
+          _announcementCard('Science Fair 2024', 'Join us for the annual Science Fair on November 10, 2024.', 'Oct 24, 2024', Colors.green, true),
           const SizedBox(height: 12),
-          _announcementCard(
-            'Semestral Break',
-            'Classes will be suspended from October 28 to November 3 for the semestral break. Classes will resume on November 4, 2024. Have a safe and restful break!',
-            'Oct 20, 2024',
-            Colors.orange,
-            false,
-          ),
-          const SizedBox(height: 12),
-          _announcementCard(
-            'Parent-Teacher Conference',
-            'The Parent-Teacher Conference is scheduled for November 8, 2024. Parents are invited to discuss their child\'s academic progress with teachers.',
-            'Oct 18, 2024',
-            Colors.purple,
-            false,
-          ),
+          _announcementCard('Semestral Break', 'Classes will be suspended from October 28 to November 3.', 'Oct 20, 2024', Colors.orange, false),
         ],
       ),
     );
   }
 
-  Widget _announcementCard(
-    String title,
-    String content,
-    String date,
-    Color color,
-    bool isNew,
-  ) {
+  Widget _announcementCard(String title, String content, String date, Color color, bool isNew) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: isNew
-            ? [
-                BoxShadow(
-                  color: color.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1858,10 +1174,7 @@ Widget _assignmentCard(
               Container(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                 child: Icon(Icons.announcement, color: color, size: 20),
               ),
               const SizedBox(width: 12),
@@ -1869,57 +1182,421 @@ Widget _assignmentCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                        color: Color(0xFF1a2b4a),
-                      ),
-                    ),
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Color(0xFF1a2b4a))),
                     const SizedBox(height: 4),
-                    Text(
-                      date,
-                      style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text(date, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
                   ],
                 ),
               ),
               if (isNew)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'NEW',
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                  child: const Text('NEW', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.w700)),
                 ),
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            content,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
+          Text(content, style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.5)),
         ],
       ),
+    );
+  }
+}
+
+// ==================== SUBMIT ASSIGNMENT PAGE (Web & Mobile Compatible) ====================
+class _SubmitAssignmentPage extends StatefulWidget {
+  final String assignmentId;
+  final String assignmentTitle;
+  final Future<void> Function(String comment, String fileName, Uint8List? fileBytes) onSubmit;
+  
+  const _SubmitAssignmentPage({
+    required this.assignmentId,
+    required this.assignmentTitle,
+    required this.onSubmit,
+  });
+  
+  @override
+  State<_SubmitAssignmentPage> createState() => _SubmitAssignmentPageState();
+}
+
+class _SubmitAssignmentPageState extends State<_SubmitAssignmentPage> {
+  final TextEditingController _commentController = TextEditingController();
+  String? _selectedFileName;
+  Uint8List? _selectedFileBytes;
+  bool _isSubmitting = false;
+  
+  Future<void> _pickFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt', 'jpg', 'png', 'jpeg'],
+        allowMultiple: false,
+      );
+      
+      if (result != null) {
+        final PlatformFile file = result.files.first;
+        
+        setState(() {
+          _selectedFileName = file.name;
+          _selectedFileBytes = file.bytes;
+        });
+        
+        String fileSize = _formatFileSize(file.size);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('File selected: ${file.name} ($fileSize)'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No file selected'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking file: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+  
+  String _formatFileSize(int sizeInBytes) {
+    if (sizeInBytes < 1024) return '$sizeInBytes B';
+    if (sizeInBytes < 1024 * 1024) return '${(sizeInBytes / 1024).toStringAsFixed(1)} KB';
+    return '${(sizeInBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Submit Assignment'),
+        backgroundColor: const Color(0xFF0d2b5c),
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Assignment', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.assignmentTitle,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'ID: ${widget.assignmentId}',
+                        style: TextStyle(color: Colors.blue.shade700, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text('Add Comment / Note', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _commentController,
+              decoration: InputDecoration(
+                hintText: 'e.g., "I have attached my solution in PDF format"',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                contentPadding: const EdgeInsets.all(16),
+              ),
+              maxLines: 4,
+            ),
+            const SizedBox(height: 20),
+            const Text('File Upload', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: _pickFile,
+              child: Container(
+                height: 160,
+                decoration: BoxDecoration(
+                  border: Border.all(color: _selectedFileName != null ? Colors.green : Colors.grey.shade300, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.grey.shade50,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _selectedFileName != null ? Icons.check_circle : Icons.cloud_upload,
+                      size: 48,
+                      color: _selectedFileName != null ? Colors.green : Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _selectedFileName ?? 'Click to browse files',
+                      style: TextStyle(
+                        color: _selectedFileName != null ? Colors.green : Colors.grey.shade600,
+                        fontWeight: _selectedFileName != null ? FontWeight.w600 : FontWeight.normal,
+                        fontSize: _selectedFileName != null ? 14 : 16,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (_selectedFileName != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '✓ File ready for upload',
+                        style: TextStyle(color: Colors.green.shade600, fontSize: 12),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Text(
+                      'Supported: PDF, DOC, DOCX, PPT, PPTX, TXT, JPG, PNG',
+                      style: TextStyle(color: Colors.grey.shade400, fontSize: 11),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSubmitting ? null : () async {
+                  if (_commentController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please add a comment or note')),
+                    );
+                    return;
+                  }
+                  
+                  if (_selectedFileName == null || _selectedFileBytes == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please select a file to upload')),
+                    );
+                    return;
+                  }
+                  
+                  setState(() {
+                    _isSubmitting = true;
+                  });
+                  
+                  await widget.onSubmit(_commentController.text, _selectedFileName!, _selectedFileBytes);
+                  
+                  setState(() {
+                    _isSubmitting = false;
+                  });
+                  
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Assignment submitted successfully!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    Navigator.pop(context, true);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0d2b5c),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 2,
+                ),
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Text('Submit Assignment', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== SUBMISSION STATUS PAGE ====================
+class _SubmissionStatusPage extends StatelessWidget {
+  final List<Map<String, dynamic>> submissions;
+  final List<Map<String, dynamic>> assignments;
+  
+  const _SubmissionStatusPage({required this.submissions, required this.assignments});
+  
+  String _getAssignmentTitle(String assignmentId) {
+    try {
+      final assignment = assignments.firstWhere((a) => a['id'] == assignmentId);
+      return assignment['title'] ?? 'Unknown';
+    } catch (e) {
+      return 'Unknown';
+    }
+  }
+  
+  String _formatFileSize(int sizeInBytes) {
+    if (sizeInBytes < 1024) return '$sizeInBytes B';
+    if (sizeInBytes < 1024 * 1024) return '${(sizeInBytes / 1024).toStringAsFixed(1)} KB';
+    return '${(sizeInBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Submission Status'),
+        backgroundColor: const Color(0xFF0d2b5c),
+        foregroundColor: Colors.white,
+      ),
+      body: submissions.isEmpty
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.folder_open, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('No submissions yet', style: TextStyle(fontSize: 16, color: Colors.grey)),
+                ],
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: submissions.length,
+              itemBuilder: (context, index) {
+                final submission = submissions[index];
+                final isApproved = submission['status'] == 'Approved';
+                final isPending = submission['status'] == 'Pending';
+                final fileSize = submission['file_size'] ?? 0;
+                
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _getAssignmentTitle(submission['assignment_id']),
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: isApproved 
+                                    ? Colors.green.withValues(alpha: 0.1)
+                                    : isPending
+                                        ? Colors.orange.withValues(alpha: 0.1)
+                                        : Colors.red.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                submission['status'],
+                                style: TextStyle(
+                                  color: isApproved ? Colors.green : isPending ? Colors.orange : Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Icon(Icons.insert_drive_file, size: 16, color: Colors.grey.shade600),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'File: ${submission['file_name']} (${_formatFileSize(fileSize)})',
+                                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.comment, size: 16, color: Colors.grey.shade600),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Comment: ${submission['comment']}',
+                                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Submitted: ${submission['submitted_at'].toString().split(' ')[0]}',
+                              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                        if (submission['feedback'].isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.feedback, size: 16, color: Colors.blue.shade700),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Feedback: ${submission['feedback']}',
+                                    style: TextStyle(color: Colors.blue.shade700, fontSize: 13),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

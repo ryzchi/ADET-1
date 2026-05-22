@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dashboards_page/teacher_dashboard_page.dart';
 import 'dashboards_page/student_dashboard_page.dart';
-import 'pages/upload_material_page.dart';
 import 'public_view/login_page.dart';
 import 'public_view/home_page.dart';
 import 'public_view/news_page.dart';
@@ -26,7 +25,6 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(primarySwatch: Colors.blue),
       initialRoute: '/login',
       onGenerateRoute: (settings) {
-        // Handle routes with arguments
         if (settings.name == '/verify-email') {
           final args = settings.arguments as Map<String, dynamic>?;
           final email = args?['email'] ?? '';
@@ -35,7 +33,6 @@ class MyApp extends StatelessWidget {
           );
         }
         
-        // Handle all other routes
         switch (settings.name) {
           case '/login':
           case '/':
@@ -48,12 +45,10 @@ class MyApp extends StatelessWidget {
             return MaterialPageRoute(builder: (context) => const CalendarPage());
           case '/dashboard':
           case '/teacher-dashboard':
-          case '/faculty-dashboard':
             return MaterialPageRoute(builder: (context) => const TeacherDashboardPage());
           case '/student-dashboard':
             return MaterialPageRoute(builder: (context) => const StudentDashboardPage());
-          case '/upload':
-            return MaterialPageRoute(builder: (context) => const UploadMaterialPage());
+          // inalis ang '/upload' route
           case '/register':
             return MaterialPageRoute(builder: (context) => const RegisterPage());
           case '/change-password':
