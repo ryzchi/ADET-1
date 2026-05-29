@@ -16,28 +16,75 @@ class StudentDashboardPage extends StatefulWidget {
 
 class _StudentDashboardPageState extends State<StudentDashboardPage> {
   final _authService = AuthService();
-  
+
   int _selectedIndex = 0;
   bool _isMobile = false;
   bool _isLoadingAssignments = false;
-  
+
   List<Map<String, dynamic>> _assignments = [];
   List<Map<String, dynamic>> _submissions = [];
+  List<Map<String, dynamic>> _attendanceRecords = []; // ATTENDANCE DATA
 
   @override
   void initState() {
     super.initState();
     _loadAssignmentsWithStatus();
+    _loadAttendanceData();
   }
 
+  // ==================== ATTENDANCE METHODS ====================
+  Future<void> _loadAttendanceData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final studentEmail = _authService.currentUserEmail ?? 'student';
+    final key = 'attendance_${studentEmail.replaceAll('.', '_')}';
+    final String? data = prefs.getString(key);
+
+    if (data != null) {
+      setState(() {
+        _attendanceRecords = List<Map<String, dynamic>>.from(jsonDecode(data));
+      });
+    } else {
+      // Generate sample attendance for the last 30 days
+      final sample = _generateSampleAttendance();
+      setState(() {
+        _attendanceRecords = sample;
+      });
+      await prefs.setString(key, jsonEncode(sample));
+    }
+  }
+
+  List<Map<String, dynamic>> _generateSampleAttendance() {
+    final List<Map<String, dynamic>> records = [];
+    final now = DateTime.now();
+    final subjects = ['Mathematics', 'Science', 'English', 'History', 'PE', 'Art'];
+
+    for (int i = 0; i < 30; i++) {
+      final date = now.subtract(Duration(days: i));
+      // Weighted random: 70% present, 15% late, 15% absent
+      final random = DateTime.now().millisecondsSinceEpoch % 100;
+      String status;
+      if (random < 70) status = 'Present';
+      else if (random < 85) status = 'Late';
+      else status = 'Absent';
+
+      records.add({
+        'date': date.toIso8601String().split('T')[0],
+        'status': status,
+        'subject': subjects[i % subjects.length],
+      });
+    }
+    return records;
+  }
+
+  // Existing assignment / submission methods
   Future<void> _loadAssignmentsWithStatus() async {
     setState(() {
       _isLoadingAssignments = true;
     });
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       final assignmentsJson = prefs.getString('student_assignments');
       if (assignmentsJson != null) {
         _assignments = List<Map<String, dynamic>>.from(jsonDecode(assignmentsJson));
@@ -74,17 +121,16 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
         ];
         await _saveAssignments();
       }
-      
+
       final studentEmail = _authService.currentUserEmail ?? 'student';
       final submissionsKey = 'submissions_${studentEmail.replaceAll('.', '_')}';
       final submissionsJson = prefs.getString(submissionsKey);
-      
+
       if (submissionsJson != null) {
         _submissions = List<Map<String, dynamic>>.from(jsonDecode(submissionsJson));
       } else {
         _submissions = [];
       }
-      
     } catch (e) {
       print('Error loading data: $e');
     } finally {
@@ -117,58 +163,55 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
       return null;
     }
   }
-      Future<void> _submitAssignment(String assignmentId, String comment, String fileName, Uint8List? fileBytes) async {
-        final prefs = await SharedPreferences.getInstance();
-        final studentEmail = _authService.currentUserEmail ?? 'student';
-        final studentName = _authService.currentUserName ?? 'Student';
-        
-        // Get assignment title
-        String assignmentTitle = '';
-        try {
-          final assignment = _assignments.firstWhere((a) => a['id'] == assignmentId);
-          assignmentTitle = assignment['title'] ?? 'Unknown';
-        } catch (e) {
-          assignmentTitle = 'Unknown';
-        }
-        
-        final submission = {
-          'id': DateTime.now().millisecondsSinceEpoch.toString(),
-          'assignment_id': assignmentId,
-          'assignment_title': assignmentTitle,
-          'student_email': studentEmail,
-          'student_name': studentName,
-          'status': 'Pending',
-          'feedback': '',
-          'comment': comment,
-          'file_name': fileName,
-          'file_size': fileBytes?.length ?? 0,
-          'submitted_at': DateTime.now().toIso8601String(),
-        };
-        
-        // 1. SAVE TO GLOBAL SUBMISSIONS (para makita ng teacher)
-        final globalSubmissionsJson = prefs.getString('all_submissions');
-        List<Map<String, dynamic>> allSubmissions = [];
-        if (globalSubmissionsJson != null) {
-          allSubmissions = List<Map<String, dynamic>>.from(jsonDecode(globalSubmissionsJson));
-        }
-        allSubmissions.add(submission);
-        await prefs.setString('all_submissions', jsonEncode(allSubmissions));
-        
-        // 2. SAVE TO STUDENT-SPECIFIC SUBMISSIONS (para sa student history)
-        final studentSubmissionsKey = 'submissions_${studentEmail.replaceAll('.', '_')}';
-        final studentSubmissionsJson = prefs.getString(studentSubmissionsKey);
-        List<Map<String, dynamic>> studentSubmissions = [];
-        if (studentSubmissionsJson != null) {
-          studentSubmissions = List<Map<String, dynamic>>.from(jsonDecode(studentSubmissionsJson));
-        }
-        studentSubmissions.add(submission);
-        await prefs.setString(studentSubmissionsKey, jsonEncode(studentSubmissions));
-        
-        // Update local state
-        setState(() {
-          _submissions.add(submission);
-        });
-      }
+
+  Future<void> _submitAssignment(String assignmentId, String comment, String fileName, Uint8List? fileBytes) async {
+    final prefs = await SharedPreferences.getInstance();
+    final studentEmail = _authService.currentUserEmail ?? 'student';
+    final studentName = _authService.currentUserName ?? 'Student';
+
+    String assignmentTitle = '';
+    try {
+      final assignment = _assignments.firstWhere((a) => a['id'] == assignmentId);
+      assignmentTitle = assignment['title'] ?? 'Unknown';
+    } catch (e) {
+      assignmentTitle = 'Unknown';
+    }
+
+    final submission = {
+      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'assignment_id': assignmentId,
+      'assignment_title': assignmentTitle,
+      'student_email': studentEmail,
+      'student_name': studentName,
+      'status': 'Pending',
+      'feedback': '',
+      'comment': comment,
+      'file_name': fileName,
+      'file_size': fileBytes?.length ?? 0,
+      'submitted_at': DateTime.now().toIso8601String(),
+    };
+
+    final globalSubmissionsJson = prefs.getString('all_submissions');
+    List<Map<String, dynamic>> allSubmissions = [];
+    if (globalSubmissionsJson != null) {
+      allSubmissions = List<Map<String, dynamic>>.from(jsonDecode(globalSubmissionsJson));
+    }
+    allSubmissions.add(submission);
+    await prefs.setString('all_submissions', jsonEncode(allSubmissions));
+
+    final studentSubmissionsKey = 'submissions_${studentEmail.replaceAll('.', '_')}';
+    final studentSubmissionsJson = prefs.getString(studentSubmissionsKey);
+    List<Map<String, dynamic>> studentSubmissions = [];
+    if (studentSubmissionsJson != null) {
+      studentSubmissions = List<Map<String, dynamic>>.from(jsonDecode(studentSubmissionsJson));
+    }
+    studentSubmissions.add(submission);
+    await prefs.setString(studentSubmissionsKey, jsonEncode(studentSubmissions));
+
+    setState(() {
+      _submissions.add(submission);
+    });
+  }
 
   Future<void> _logout() async {
     try {
@@ -229,6 +272,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
+  // ==================== APP BAR & DRAWER ====================
   PreferredSizeWidget _buildMobileAppBar() {
     return AppBar(
       backgroundColor: const Color(0xFF0d2b5c),
@@ -357,7 +401,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
         ),
       ),
-      tileColor: isSelected ? const Color(0xFF0d2b5c).withValues(alpha: 0.08) : null,
+      tileColor: isSelected ? const Color(0xFF0d2b5c).withOpacity(0.08) : null,
       onTap: () {
         setState(() => _selectedIndex = index);
         Navigator.pop(context);
@@ -425,7 +469,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
         ),
       ),
-      tileColor: isSelected ? const Color(0xFF0d2b5c).withValues(alpha: 0.08) : null,
+      tileColor: isSelected ? const Color(0xFF0d2b5c).withOpacity(0.08) : null,
       onTap: () => setState(() => _selectedIndex = index),
     );
   }
@@ -439,7 +483,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
       case 2:
         return _buildQuizzes();
       case 3:
-        return _buildAttendance();
+        return _buildAttendance();  // <-- ATTENDANCE PAGE NA MAY LISTAHAN
       case 4:
         return _buildAnnouncements();
       default:
@@ -447,10 +491,11 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     }
   }
 
+  // ==================== OVERVIEW ====================
   Widget _buildOverview() {
     final pendingCount = _assignments.where((a) => !_isAssignmentSubmitted(a['id'])).length;
     final submittedCount = _submissions.length;
-    
+
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
       child: Column(
@@ -484,7 +529,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                       Text(
                         'Track your academic progress and stay updated with your classes.',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
+                          color: Colors.white.withOpacity(0.8),
                           fontSize: 14,
                         ),
                       ),
@@ -495,7 +540,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: Colors.white.withOpacity(0.2),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -522,7 +567,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                 children: [
                   _statCard('Assignments', '$pendingCount', 'Pending', Colors.orange, Icons.assignment),
                   _statCard('Submitted', '$submittedCount', 'Done', Colors.green, Icons.check_circle),
-                  _statCard('Attendance', '92%', 'Present', Colors.blue, Icons.calendar_today),
+                  _statCard('Attendance', '${_getAttendancePercentage()}%', 'Rate', Colors.blue, Icons.calendar_today),
                   _statCard('Grade Average', '87%', 'B+', const Color(0xFF0d2b5c), Icons.grade),
                 ],
               );
@@ -569,6 +614,12 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
+  int _getAttendancePercentage() {
+    if (_attendanceRecords.isEmpty) return 0;
+    int present = _attendanceRecords.where((r) => r['status'] == 'Present').length;
+    return ((present / _attendanceRecords.length) * 100).round();
+  }
+
   Widget _statCard(String title, String value, String subtitle, Color color, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -586,7 +637,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
+                  color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -595,7 +646,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
+                  color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(subtitle, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
@@ -613,7 +664,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
 
   Widget _buildRecentAssignments() {
     final recentAssignments = _assignments.take(3).toList();
-    
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -654,7 +705,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                   if (isSubmitted)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
                       child: const Text('Submitted', style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.w600)),
                     ),
                 ],
@@ -706,7 +757,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           Container(
             width: 40,
             height: 40,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
             child: Icon(Icons.quiz, color: color, size: 20),
           ),
           const SizedBox(width: 12),
@@ -725,7 +776,12 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
+  // Attendance summary card (used in Overview)
   Widget _buildAttendanceSummary() {
+    int present = _attendanceRecords.where((r) => r['status'] == 'Present').length;
+    int late = _attendanceRecords.where((r) => r['status'] == 'Late').length;
+    int absent = _attendanceRecords.where((r) => r['status'] == 'Absent').length;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -736,13 +792,14 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Attendance Summary', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
+          const Text('Attendance Summary',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _attendanceStat('Present', '23', Colors.green)),
-              Expanded(child: _attendanceStat('Late', '2', Colors.orange)),
-              Expanded(child: _attendanceStat('Absent', '1', Colors.red)),
+              Expanded(child: _attendanceStat('Present', present.toString(), Colors.green)),
+              Expanded(child: _attendanceStat('Late', late.toString(), Colors.orange)),
+              Expanded(child: _attendanceStat('Absent', absent.toString(), Colors.red)),
             ],
           ),
         ],
@@ -776,7 +833,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               const Text('Announcements', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
                 child: const Text('2 New', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.w700)),
               ),
             ],
@@ -822,6 +879,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
+  // ==================== ASSIGNMENTS PAGE ====================
   Widget _buildAssignments() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
@@ -873,7 +931,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                 final isSubmitted = _isAssignmentSubmitted(assignment['id']);
                 final submission = _getSubmission(assignment['id']);
                 final submissionStatus = submission?['status'];
-                
+
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: _assignmentCard(
@@ -909,13 +967,13 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
       if (submissionStatus == 'Rejected') return Colors.red;
       return Colors.orange;
     }
-    
+
     String getStatusText() {
       if (submissionStatus == 'Approved') return 'Approved';
       if (submissionStatus == 'Rejected') return 'Rejected';
       return 'Submitted';
     }
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
@@ -923,7 +981,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -934,7 +992,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: (isSubmitted ? Colors.green : Colors.blue).withValues(alpha: 0.1),
+                  color: (isSubmitted ? Colors.green : Colors.blue).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(isSubmitted ? Icons.check_circle : Icons.assignment, color: isSubmitted ? Colors.green : Colors.blue, size: 30),
@@ -948,7 +1006,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                     const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                      decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
                       child: Text(subject, style: const TextStyle(color: Colors.blue, fontSize: 12, fontWeight: FontWeight.w700)),
                     ),
                   ],
@@ -957,7 +1015,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               if (isSubmitted)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(color: getStatusColor().withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(color: getStatusColor().withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1014,6 +1072,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
+  // ==================== QUIZZES PAGE ====================
   Widget _buildQuizzes() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
@@ -1053,7 +1112,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
             child: Icon(isCompleted ? Icons.check_circle : Icons.quiz, color: isCompleted ? Colors.green : color, size: 28),
           ),
           const SizedBox(width: 16),
@@ -1075,7 +1134,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               if (isCompleted && score != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
                   child: Text(score, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w700)),
                 )
               else
@@ -1099,29 +1158,95 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
+  // ==================== ATTENDANCE PAGE (FULL with DETAILS) ====================
   Widget _buildAttendance() {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(_isMobile ? 16 : 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Attendance Record', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
-          const SizedBox(height: 4),
-          Text('View your attendance history', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE2E8F0))),
-            child: Row(
-              children: [
-                _attendanceBigStat('23', 'Present', Colors.green),
-                _attendanceBigStat('2', 'Late', Colors.orange),
-                _attendanceBigStat('1', 'Absent', Colors.red),
-                _attendanceBigStat('92%', 'Rate', const Color(0xFF0d2b5c)),
-              ],
+    int present = _attendanceRecords.where((r) => r['status'] == 'Present').length;
+    int late = _attendanceRecords.where((r) => r['status'] == 'Late').length;
+    int absent = _attendanceRecords.where((r) => r['status'] == 'Absent').length;
+    double rate = _attendanceRecords.isEmpty ? 0 : (present / _attendanceRecords.length) * 100;
+
+    return RefreshIndicator(
+      onRefresh: _loadAttendanceData,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(_isMobile ? 16 : 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Attendance Record',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
+            const SizedBox(height: 4),
+            Text('Your attendance history (Present, Late, Absent)',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+            const SizedBox(height: 24),
+
+            // === SUMMARY CARDS ===
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  _attendanceBigStat(present.toString(), 'Present', Colors.green),
+                  _attendanceBigStat(late.toString(), 'Late', Colors.orange),
+                  _attendanceBigStat(absent.toString(), 'Absent', Colors.red),
+                  _attendanceBigStat('${rate.toStringAsFixed(1)}%', 'Rate', const Color(0xFF0d2b5c)),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 24),
+
+            // === DETAILED ATTENDANCE LOG ===
+            const Text('Daily Attendance Log',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
+            const SizedBox(height: 12),
+
+            if (_attendanceRecords.isEmpty)
+              const Center(child: Text('No attendance records found.'))
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _attendanceRecords.length,
+                itemBuilder: (context, index) {
+                  final record = _attendanceRecords[index];
+                  Color statusColor;
+                  IconData statusIcon;
+                  if (record['status'] == 'Present') {
+                    statusColor = Colors.green;
+                    statusIcon = Icons.check_circle;
+                  } else if (record['status'] == 'Late') {
+                    statusColor = Colors.orange;
+                    statusIcon = Icons.access_time;
+                  } else {
+                    statusColor = Colors.red;
+                    statusIcon = Icons.cancel;
+                  }
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      leading: Icon(statusIcon, color: statusColor, size: 28),
+                      title: Text(record['subject'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(record['date']),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(record['status'], style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1138,6 +1263,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
+  // ==================== ANNOUNCEMENTS PAGE ====================
   Widget _buildAnnouncements() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
@@ -1174,7 +1300,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               Container(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                 child: Icon(Icons.announcement, color: color, size: 20),
               ),
               const SizedBox(width: 12),
@@ -1191,7 +1317,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               if (isNew)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                  decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
                   child: const Text('NEW', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.w700)),
                 ),
             ],
@@ -1204,18 +1330,18 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
   }
 }
 
-// ==================== SUBMIT ASSIGNMENT PAGE (Web & Mobile Compatible) ====================
+// ==================== SUBMIT ASSIGNMENT PAGE ====================
 class _SubmitAssignmentPage extends StatefulWidget {
   final String assignmentId;
   final String assignmentTitle;
   final Future<void> Function(String comment, String fileName, Uint8List? fileBytes) onSubmit;
-  
+
   const _SubmitAssignmentPage({
     required this.assignmentId,
     required this.assignmentTitle,
     required this.onSubmit,
   });
-  
+
   @override
   State<_SubmitAssignmentPage> createState() => _SubmitAssignmentPageState();
 }
@@ -1225,7 +1351,7 @@ class _SubmitAssignmentPageState extends State<_SubmitAssignmentPage> {
   String? _selectedFileName;
   Uint8List? _selectedFileBytes;
   bool _isSubmitting = false;
-  
+
   Future<void> _pickFile() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -1233,15 +1359,15 @@ class _SubmitAssignmentPageState extends State<_SubmitAssignmentPage> {
         allowedExtensions: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt', 'jpg', 'png', 'jpeg'],
         allowMultiple: false,
       );
-      
+
       if (result != null) {
         final PlatformFile file = result.files.first;
-        
+
         setState(() {
           _selectedFileName = file.name;
           _selectedFileBytes = file.bytes;
         });
-        
+
         String fileSize = _formatFileSize(file.size);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1267,13 +1393,13 @@ class _SubmitAssignmentPageState extends State<_SubmitAssignmentPage> {
       );
     }
   }
-  
+
   String _formatFileSize(int sizeInBytes) {
     if (sizeInBytes < 1024) return '$sizeInBytes B';
     if (sizeInBytes < 1024 * 1024) return '${(sizeInBytes / 1024).toStringAsFixed(1)} KB';
     return '${(sizeInBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1389,24 +1515,24 @@ class _SubmitAssignmentPageState extends State<_SubmitAssignmentPage> {
                     );
                     return;
                   }
-                  
+
                   if (_selectedFileName == null || _selectedFileBytes == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Please select a file to upload')),
                     );
                     return;
                   }
-                  
+
                   setState(() {
                     _isSubmitting = true;
                   });
-                  
+
                   await widget.onSubmit(_commentController.text, _selectedFileName!, _selectedFileBytes);
-                  
+
                   setState(() {
                     _isSubmitting = false;
                   });
-                  
+
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -1447,9 +1573,9 @@ class _SubmitAssignmentPageState extends State<_SubmitAssignmentPage> {
 class _SubmissionStatusPage extends StatelessWidget {
   final List<Map<String, dynamic>> submissions;
   final List<Map<String, dynamic>> assignments;
-  
+
   const _SubmissionStatusPage({required this.submissions, required this.assignments});
-  
+
   String _getAssignmentTitle(String assignmentId) {
     try {
       final assignment = assignments.firstWhere((a) => a['id'] == assignmentId);
@@ -1458,13 +1584,13 @@ class _SubmissionStatusPage extends StatelessWidget {
       return 'Unknown';
     }
   }
-  
+
   String _formatFileSize(int sizeInBytes) {
     if (sizeInBytes < 1024) return '$sizeInBytes B';
     if (sizeInBytes < 1024 * 1024) return '${(sizeInBytes / 1024).toStringAsFixed(1)} KB';
     return '${(sizeInBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1492,7 +1618,7 @@ class _SubmissionStatusPage extends StatelessWidget {
                 final isApproved = submission['status'] == 'Approved';
                 final isPending = submission['status'] == 'Pending';
                 final fileSize = submission['file_size'] ?? 0;
-                
+
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   elevation: 2,
@@ -1514,11 +1640,11 @@ class _SubmissionStatusPage extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: isApproved 
-                                    ? Colors.green.withValues(alpha: 0.1)
+                                color: isApproved
+                                    ? Colors.green.withOpacity(0.1)
                                     : isPending
-                                        ? Colors.orange.withValues(alpha: 0.1)
-                                        : Colors.red.withValues(alpha: 0.1),
+                                        ? Colors.orange.withOpacity(0.1)
+                                        : Colors.red.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
