@@ -1,5 +1,4 @@
 ﻿import 'package:flutter/material.dart';
-import 'uploaded_material.dart';
 
 class LessonPlanPage extends StatelessWidget {
   const LessonPlanPage({super.key});
@@ -8,7 +7,9 @@ class LessonPlanPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Lesson Plans')),
-      body: const Center(child: Text('Lesson Plans feature is integrated in Teacher Dashboard')),
+      body: const Center(
+        child: Text('Lesson Plans feature is integrated in Teacher Dashboard'),
+      ),
     );
   }
 }
