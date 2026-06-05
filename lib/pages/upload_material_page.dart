@@ -63,13 +63,24 @@ class _UploadMaterialPageState extends State<UploadMaterialPage> {
       _errorMessage = null;
     });
 
+    // Simulate network delay (optional)
     await Future.delayed(const Duration(seconds: 1));
+
+    // Extract file extension for "type" field
+    final extension = selectedFileName!.contains('.')
+        ? selectedFileName!.split('.').last.toUpperCase()
+        : 'FILE';
 
     final uploadedMaterial = UploadedMaterial(
       title: _titleController.text.trim(),
       subject: _subjectController.text.trim(),
       fileName: selectedFileName!,
-      fileBytes: selectedFileBytes,
+      filePath: selectedFile?.path ?? '',
+      fileUrl: null,                     // No remote URL yet
+      type: extension,                   // e.g., PDF, DOCX, etc.
+      fileId: null,
+      fileBytes: selectedFileBytes,      // Raw bytes of the file
+      fileContent: null,                 // Not used
     );
 
     if (!mounted) return;
