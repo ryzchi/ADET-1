@@ -1557,88 +1557,326 @@
       );
     }
 
-    // ==================== QUIZZES PAGE ====================
-    Widget _buildQuizzes() {
-      return SingleChildScrollView(
-        padding: EdgeInsets.all(_isMobile ? 16 : 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Available Quizzes',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1a2b4a),
+  // ==================== QUIZZES (STUDENT) ====================
+  List<Map<String, dynamic>> _quizzes = [];
+  List<Map<String, dynamic>> _quizAttempts = [];
+
+  Map<String, dynamic>? _getQuizAttemptByQuizId(String quizId) {
+    try {
+      return _quizAttempts.firstWhere((a) => a['quiz_id']?.toString() == quizId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _loadStudentQuizAttempts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final studentEmail = (_authService.currentUserEmail ?? 'student').replaceAll('.', '_');
+    final attemptsJson = prefs.getString('quiz_attempts_$studentEmail');
+
+    if (attemptsJson == null) {
+      setState(() => _quizAttempts = []);
+      return;
+    }
+
+    setState(() {
+      _quizAttempts = List<Map<String, dynamic>>.from(jsonDecode(attemptsJson));
+    });
+  }
+
+  Future<void> _loadTeacherQuizzes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final quizzesJson = prefs.getString('teacher_quizzes');
+    if (quizzesJson == null) {
+      setState(() => _quizzes = []);
+      return;
+    }
+
+    setState(() {
+      _quizzes = List<Map<String, dynamic>>.from(jsonDecode(quizzesJson));
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Ensures quizzes are loaded once.
+    if (_quizzes.isEmpty && _quizAttempts.isEmpty) {
+      _loadTeacherQuizzes();
+      _loadStudentQuizAttempts();
+    }
+  }
+
+  // Google-Forms like quiz taking
+  Future<void> _startQuiz(Map<String, dynamic> quiz) async {
+    final questions = List<Map<String, dynamic>>.from(quiz['questions'] ?? []);
+
+    final studentEmail = _authService.currentUserEmail ?? 'student';
+
+    // local answers
+    final Map<int, String> mcSelections = {};
+    final Map<int, String> identificationAnswers = {};
+    final Map<int, String> essayAnswers = {};
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setQuizState) {
+            return AlertDialog(
+              title: Text('Quiz: ${quiz['title'] ?? ''}'),
+              content: SizedBox(
+                width: 650,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ...List.generate(questions.length, (index) {
+                        final q = questions[index];
+                        final type = q['type']?.toString() ?? '';
+                        final text = q['text']?.toString() ?? '';
+
+                        if (type == 'Multiple Choice') {
+                          final choices = List<String>.from(q['choices'] ?? []);
+                          final selected = mcSelections[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${index + 1}. $text', style: const TextStyle(fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 8),
+                                Column(
+                                  children: List.generate(choices.length, (i) {
+                                    final label = String.fromCharCode(65 + i);
+                                    return RadioListTile<String>(
+                                      value: label,
+                                      groupValue: selected,
+                                      title: Text('$label. ${choices[i]}'),
+                                      onChanged: (val) {
+                                        setQuizState(() => mcSelections[index] = val ?? '');
+                                      },
+                                      dense: true,
+                                    );
+                                  }),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        if (type == 'Identification') {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${index + 1}. $text', style: const TextStyle(fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  decoration: const InputDecoration(labelText: 'Your answer'),
+                                  onChanged: (val) => identificationAnswers[index] = val,
+                                  controller: TextEditingController(text: identificationAnswers[index] ?? ''),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        // Essay
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${index + 1}. $text', style: const TextStyle(fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 8),
+                              TextField(
+                                maxLines: 5,
+                                decoration: const InputDecoration(labelText: 'Your answer'),
+                                onChanged: (val) => essayAnswers[index] = val,
+                                controller: TextEditingController(text: essayAnswers[index] ?? ''),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Take quizzes to test your knowledge',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-            ),
-            const SizedBox(height: 24),
-            _quizCard(
-              'Algebraic Expressions',
-              'Mathematics',
-              '15 items • 30 mins',
-              'Oct 28, 2024',
-              Colors.blue,
-              false,
-            ),
-            const SizedBox(height: 12),
-            _quizCard(
-              'Cell Structure & Function',
-              'Science',
-              '20 items • 40 mins',
-              'Oct 30, 2024',
-              Colors.green,
-              false,
-            ),
-            const SizedBox(height: 12),
-            _quizCard(
-              'Grammar & Composition',
-              'English',
-              '25 items • 45 mins',
-              'Nov 2, 2024',
-              Colors.orange,
-              false,
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Completed Quizzes',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1a2b4a),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _quizCard(
-              'Philippine Literature',
-              'Filipino',
-              '20 items',
-              'Oct 20, 2024',
-              Colors.teal,
-              true,
-              score: '92%',
-            ),
-            const SizedBox(height: 12),
-            _quizCard(
-              'World War II History',
-              'History',
-              '25 items',
-              'Oct 18, 2024',
-              Colors.red,
-              true,
-              score: '85%',
-            ),
-          ],
-        ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    // compute score
+                    int correct = 0;
+                    int total = questions.length;
+
+                    for (int i = 0; i < questions.length; i++) {
+                      final q = questions[i];
+                      final type = q['type']?.toString() ?? '';
+
+                      if (type == 'Multiple Choice') {
+                        final expected = (q['correctAnswer']?.toString() ?? '').trim().toUpperCase();
+                        final got = (mcSelections[i] ?? '').trim().toUpperCase();
+                        if (expected.isNotEmpty && got == expected) correct++;
+                      } else if (type == 'Identification') {
+                        final expected = (q['answer']?.toString() ?? '').trim().toUpperCase();
+                        final got = (identificationAnswers[i] ?? '').trim().toUpperCase();
+                        if (expected.isNotEmpty && got == expected) correct++;
+                      } else {
+                        // Essay: auto score not implemented
+                      }
+                    }
+
+                    final percent = total > 0 ? (correct / total) * 100 : 0.0;
+
+                    final submission = {
+                      'quiz_id': quiz['id']?.toString(),
+                      'quiz_title': quiz['title']?.toString(),
+                      'student_email': studentEmail,
+                      'submitted_at': DateTime.now().toIso8601String(),
+                      'score_correct': correct,
+                      'score_total': total,
+                      'score_percent': percent,
+                      'answers': {
+                        'multiple_choice': mcSelections,
+                        'identification': identificationAnswers,
+                        'essay': essayAnswers,
+                      },
+                    };
+
+                    final prefs = await SharedPreferences.getInstance();
+                    final studentKey = studentEmail.replaceAll('.', '_');
+                    final attemptsKey = 'quiz_attempts_$studentKey';
+
+                    final attemptsJson = prefs.getString(attemptsKey);
+                    final attempts = attemptsJson == null
+                        ? <Map<String, dynamic>>[]
+                        : List<Map<String, dynamic>>.from(jsonDecode(attemptsJson));
+
+                    // Replace existing attempt for same quiz
+                    attempts.removeWhere((a) => a['quiz_id']?.toString() == submission['quiz_id']?.toString());
+                    attempts.add(submission);
+
+                    await prefs.setString(attemptsKey, jsonEncode(attempts));
+
+                    Navigator.pop(context);
+
+                    setState(() {
+                      _quizAttempts = attempts;
+                    });
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Quiz submitted! Score: ${percent.toStringAsFixed(0)}%')),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white),
+                  child: const Text('Submit Quiz'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildQuizzes() {
+    // Available quizzes: those without attempts OR those you can retake
+    final completedQuizIds = _quizAttempts.map((a) => a['quiz_id']?.toString()).whereType<String>().toSet();
+
+    final available = _quizzes;
+    final completed = _quizzes.where((q) => completedQuizIds.contains(q['id']?.toString())).toList();
+
+    Widget quizCardFor(Map<String, dynamic> quiz, {bool isCompleted = false}) {
+      final quizId = quiz['id']?.toString() ?? '';
+      final qTitle = quiz['title']?.toString() ?? 'Quiz';
+      final questions = List<Map<String, dynamic>>.from(quiz['questions'] ?? []);
+      final attempt = _getQuizAttemptByQuizId(quizId);
+      final scorePercent = attempt?['score_percent'];
+
+      // subject is not stored in teacher quiz (current schema). We'll show count.
+      final subtitle = '${questions.length} questions';
+
+      return _quizCard(
+        qTitle,
+        quiz['description']?.toString() ?? 'Quiz',
+        subtitle,
+        '',
+        Colors.blue,
+        isCompleted,
+        score: scorePercent == null ? null : '${(scorePercent as num).toStringAsFixed(0)}%',
       );
     }
 
-    Widget _quizCard(
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(_isMobile ? 16 : 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Available Quizzes',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a)),
+          ),
+          const SizedBox(height: 4),
+          Text('Take quizzes to test your knowledge', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+          const SizedBox(height: 24),
+          if (available.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(40),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+              child: const Center(child: Text('No quizzes available.')),
+            )
+          else
+            ...available.map((quiz) {
+              final completed = _getQuizAttemptByQuizId(quiz['id']?.toString() ?? '') != null;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _quizCard(
+                  quiz['title']?.toString() ?? 'Quiz',
+                  quiz['description']?.toString() ?? 'Quiz',
+                  '${List.from(quiz['questions'] ?? []).length} questions',
+                  '',
+                  Colors.blue,
+                  completed,
+                  score: _getQuizAttemptByQuizId(quiz['id']?.toString() ?? '')?['score_percent'] == null
+                      ? null
+                      : '${((_getQuizAttemptByQuizId(quiz['id']?.toString() ?? '')?['score_percent'] as num)).toStringAsFixed(0)}%',
+                ),
+              );
+            }),
+
+          const SizedBox(height: 28),
+          const Text(
+            'Completed Quizzes',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a)),
+          ),
+          const SizedBox(height: 16),
+          if (completed.isEmpty)
+            const Text('No completed quizzes yet.'),
+          else
+            ...completed.map((quiz) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _QuizCompletedTile(
+                  quiz: quiz,
+                  onStart: () => _startQuiz(quiz),
+                  getAttempt: _getQuizAttemptByQuizId,
+                ),
+              );
+            }).toList(),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _quizCard(
       String title,
       String subject,
       String info,

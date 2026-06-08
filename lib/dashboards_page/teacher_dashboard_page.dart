@@ -153,13 +153,14 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                   'id': DateTime.now().millisecondsSinceEpoch.toString(),
                   'title': titleController.text,
                   'description': descriptionController.text,
-                  'questions': [],
+                  'questions': <Map<String, dynamic>>[],
                 };
                 setState(() {
                   _quizzes.add(newQuiz);
                 });
                 _saveQuizzes();
                 Navigator.pop(context);
+                // Open the question editor AFTER the quiz is persisted in memory.
                 _editQuizQuestions(newQuiz);
               }
             },
@@ -169,6 +170,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
       ),
     );
   }
+
 
   Future<void> _editQuizQuestions(Map<String, dynamic> quiz) async {
     final List<Map<String, dynamic>> questions = List.from(quiz['questions']);
@@ -250,19 +252,23 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     }
   }
 
-  Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dynamic>> questions, StateSetter setStateDialog, int? editIndex) async {
+Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dynamic>> questions, StateSetter setStateDialog, int? editIndex) async {
     if (editIndex != null) {
       await _editSingleQuestionDialog(quiz, questions, setStateDialog, editIndex);
       return;
     }
 
     String questionType = 'Multiple Choice';
-    String questionText = '';
-    List<String> choices = ['', '', '', ''];
-    String correctAnswer = '';
-    String identificationAnswer = '';
-    String essayAnswer = '';
-    int choiceCount = 4;
+    final questionTextController = TextEditingController();
+    final correctAnswerController = TextEditingController();
+    final identificationAnswerController = TextEditingController();
+    final essayAnswerController = TextEditingController();
+    List<TextEditingController> choiceControllers = [
+      TextEditingController(),
+      TextEditingController(),
+      TextEditingController(),
+      TextEditingController(),
+    ];
 
     await showDialog(
       context: context,
@@ -291,8 +297,8 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
+                      controller: questionTextController,
                       decoration: const InputDecoration(labelText: 'Question Text'),
-                      onChanged: (val) => questionText = val,
                     ),
                     if (questionType == 'Multiple Choice') ...[
                       const SizedBox(height: 12),
@@ -304,40 +310,65 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                             icon: const Icon(Icons.add_circle, color: Colors.blue),
                             onPressed: () {
                               setStateInner(() {
-                                choices.add('');
-                                choiceCount++;
+                                choiceControllers.add(TextEditingController());
                               });
                             },
                             tooltip: 'Add choice',
                           ),
                         ],
                       ),
-                      ...List.generate(choiceCount, (i) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: TextField(
-                          decoration: InputDecoration(labelText: 'Choice ${String.fromCharCode(65 + i)}'),
-                          onChanged: (val) => choices[i] = val,
-                        ),
-                      )),
+                      ...List.generate(choiceControllers.length, (i) {
+                        final char = String.fromCharCode(65 + i);
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: choiceControllers[i],
+                                  decoration: InputDecoration(labelText: 'Choice $char'),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                tooltip: 'Delete choice',
+                                onPressed: () {
+                                  setStateInner(() {
+                                    if (choiceControllers.length <= 2) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('At least 2 choices are recommended.')),
+                                      );
+                                      return;
+                                    }
+                                    choiceControllers[i].dispose();
+                                    choiceControllers.removeAt(i);
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
                       const SizedBox(height: 8),
                       TextField(
+                        controller: correctAnswerController,
                         decoration: const InputDecoration(labelText: 'Correct Answer (e.g., A, B, C, D)'),
-                        onChanged: (val) => correctAnswer = val.toUpperCase(),
+                        onChanged: (val) => correctAnswerController.text = val.toUpperCase(),
                       ),
                     ],
                     if (questionType == 'Identification') ...[
                       const SizedBox(height: 12),
                       TextField(
+                        controller: identificationAnswerController,
                         decoration: const InputDecoration(labelText: 'Correct Answer'),
-                        onChanged: (val) => identificationAnswer = val,
                       ),
                     ],
                     if (questionType == 'Essay') ...[
                       const SizedBox(height: 12),
                       TextField(
+                        controller: essayAnswerController,
                         decoration: const InputDecoration(labelText: 'Sample Answer / Rubric'),
                         maxLines: 3,
-                        onChanged: (val) => essayAnswer = val,
                       ),
                     ],
                   ],
@@ -346,45 +377,77 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  questionTextController.dispose();
+                  correctAnswerController.dispose();
+                  identificationAnswerController.dispose();
+                  essayAnswerController.dispose();
+                  for (var controller in choiceControllers) {
+                    controller.dispose();
+                  }
+                  Navigator.pop(context);
+                },
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
                 onPressed: () {
-                  if (questionText.trim().isEmpty) {
+                  if (questionTextController.text.trim().isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter question text')));
                     return;
                   }
-                  Map<String, dynamic> newQuestion = {
-                    'text': questionText,
+                  final Map<String, dynamic> newQuestion = {
+                    'text': questionTextController.text,
                     'type': questionType,
                   };
+
                   if (questionType == 'Multiple Choice') {
-                    newQuestion['choices'] = List.from(choices);
-                    newQuestion['correctAnswer'] = correctAnswer;
+                    newQuestion['choices'] = choiceControllers.map((c) => c.text).toList();
+                    newQuestion['correctAnswer'] = correctAnswerController.text.toUpperCase();
                   } else if (questionType == 'Identification') {
-                    newQuestion['answer'] = identificationAnswer;
+                    newQuestion['answer'] = identificationAnswerController.text;
                   } else {
-                    newQuestion['sampleAnswer'] = essayAnswer;
+                    newQuestion['sampleAnswer'] = essayAnswerController.text;
                   }
 
                   questions.add(newQuestion);
                   setStateDialog(() {});
                   _saveQuizQuestions(quiz, questions);
 
-                  questionText = '';
-                  choices = ['', '', '', ''];
-                  correctAnswer = '';
-                  identificationAnswer = '';
-                  essayAnswer = '';
-                  choiceCount = 4;
+                  // Clear all text controllers para sa next question
+                  questionTextController.clear();
+                  correctAnswerController.clear();
+                  identificationAnswerController.clear();
+                  essayAnswerController.clear();
+                  for (var controller in choiceControllers) {
+                    controller.dispose();
+                  }
+                  choiceControllers = [
+                    TextEditingController(),
+                    TextEditingController(),
+                    TextEditingController(),
+                    TextEditingController(),
+                  ];
+
                   setStateInner(() {});
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Question added!'), duration: Duration(seconds: 1)));
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Question added!'), duration: Duration(seconds: 1)),
+                  );
                 },
                 child: const Text('Add Another'),
               ),
               ElevatedButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  questionTextController.dispose();
+                  correctAnswerController.dispose();
+                  identificationAnswerController.dispose();
+                  essayAnswerController.dispose();
+                  for (var controller in choiceControllers) {
+                    controller.dispose();
+                  }
+                  _saveQuizQuestions(quiz, questions);
+                  Navigator.pop(context);
+                },
                 child: const Text('Done'),
               ),
             ],
@@ -393,6 +456,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
       ),
     );
   }
+
 
   Future<void> _editSingleQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dynamic>> questions, StateSetter setStateDialog, int editIndex) async {
     final q = questions[editIndex];
@@ -2343,7 +2407,6 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
       ),
     );
   }
-  
 
   Widget _buildAnnouncements() {
     return SingleChildScrollView(
