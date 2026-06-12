@@ -18,6 +18,17 @@ class _RoleLoginPageState extends State<RoleLoginPage> {
   String? _errorMessage;
   final _authService = AuthService();
 
+  late String _emailHint;
+
+  @override
+  void initState() {
+    super.initState();
+    // Set hint based on role
+    _emailHint = widget.role.toLowerCase() == 'student'
+        ? 'name@gmail.com'
+        : 'name@dpnhs.edu.ph';
+  }
+
   Future<void> _login() async {
     if (_emailController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
@@ -31,12 +42,6 @@ class _RoleLoginPageState extends State<RoleLoginPage> {
     });
 
     try {
-      // DEBUG PRINTS - check console to see what's happening
-      print('🔐 LOGIN ATTEMPT:');
-      print('   Email: ${_emailController.text.trim()}');
-      print('   Role: ${widget.role}');
-      print('   Password length: ${_passwordController.text.length}');
-
       final result = await _authService.login(
         _emailController.text.trim(),
         _passwordController.text,
@@ -44,47 +49,31 @@ class _RoleLoginPageState extends State<RoleLoginPage> {
         _rememberMe,
       );
 
-      print('🔐 LOGIN RESULT: $result');
-
       if (!mounted) return;
-      
       setState(() => _isLoading = false);
 
       if (result['success'] == true) {
-        print('🔐 LOGIN SUCCESS - Navigating to dashboard...');
-        print('   User role: ${widget.role}');
-        if (mounted) {
-          if (widget.role.toLowerCase() == 'student') {
-            print('   → Navigating to /student-dashboard');
-            Navigator.pushReplacementNamed(context, '/student-dashboard');
-          } else {
-            print('   → Navigating to /teacher-dashboard');
-            Navigator.pushReplacementNamed(context, '/teacher-dashboard');
-          }
+        if (widget.role.toLowerCase() == 'student') {
+          Navigator.pushReplacementNamed(context, '/student-dashboard');
+        } else {
+          Navigator.pushReplacementNamed(context, '/teacher-dashboard');
         }
       } else {
-        print('🔐 LOGIN FAILED: ${result['message']}');
         if (result['needsVerification'] == true) {
-          if (mounted) {
-            Navigator.pushNamed(
-              context,
-              '/verify-email',
-              arguments: {'email': result['email']},
-            );
-          }
+          Navigator.pushNamed(
+            context,
+            '/verify-email',
+            arguments: {'email': result['email']},
+          );
           return;
         }
         setState(() => _errorMessage = result['message'] ?? 'Login failed');
       }
-    } catch (e, stacktrace) {
-      print('🔐 LOGIN EXCEPTION: $e');
-      print('🔐 STACKTRACE: $stacktrace');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'An error occurred: $e';
-        });
-      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'An error occurred: $e';
+      });
     }
   }
 
@@ -176,7 +165,7 @@ class _RoleLoginPageState extends State<RoleLoginPage> {
                         keyboardType: TextInputType.emailAddress,
                         decoration: _inputDecoration(
                           Icons.email_outlined,
-                          'name@dpnhs.edu.ph',
+                          _emailHint, // Dynamic hint
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -185,24 +174,22 @@ class _RoleLoginPageState extends State<RoleLoginPage> {
                       TextField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
-                        decoration:
-                            _inputDecoration(
-                              Icons.lock_outline,
-                              '••••••••',
-                            ).copyWith(
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                  color: Colors.grey.shade400,
-                                  size: 20,
-                                ),
-                                onPressed: () => setState(
-                                  () => _obscurePassword = !_obscurePassword,
-                                ),
-                              ),
+                        decoration: _inputDecoration(
+                          Icons.lock_outline,
+                          '••••••••',
+                        ).copyWith(
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              color: Colors.grey.shade400,
+                              size: 20,
                             ),
+                            onPressed: () =>
+                                setState(() => _obscurePassword = !_obscurePassword),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Row(
@@ -234,6 +221,7 @@ class _RoleLoginPageState extends State<RoleLoginPage> {
                             onPressed: () => Navigator.pushNamed(
                               context,
                               '/forgot-password',
+                              arguments: widget.role, // Pass role
                             ),
                             style: TextButton.styleFrom(
                               padding: EdgeInsets.zero,

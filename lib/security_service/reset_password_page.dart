@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'auth_service.dart';
 
 class ResetPasswordPage extends StatefulWidget {
-  const ResetPasswordPage({super.key});
+  final String role; // "Student" or "Faculty"
+  const ResetPasswordPage({super.key, required this.role});
 
   @override
   State<ResetPasswordPage> createState() => _ResetPasswordPageState();
@@ -19,6 +20,16 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   String? _message;
   bool _isSuccess = false;
   bool _pinSent = false;
+
+  late String _emailHint;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailHint = widget.role.toLowerCase() == 'student'
+        ? 'name@gmail.com'
+        : 'name@dpnhs.edu.ph';
+  }
 
   Future<void> _requestPin() async {
     setState(() => _isLoading = true);
@@ -94,15 +105,12 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
   Future<void> _reset() async {
     setState(() => _isLoading = true);
-
-    // 4 arguments na ngayon: email, pin, newPassword, confirmPassword
     final result = await AuthService().resetPassword(
       _emailController.text.trim(),
       _pinController.text,
       _newPasswordController.text,
       _confirmPasswordController.text,
     );
-
     setState(() {
       _isLoading = false;
       _isSuccess = result['success'];
@@ -199,21 +207,13 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                             ],
                           ),
                         ),
-                      Text(
-                        'EMAIL ADDRESS',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1,
-                        ),
-                      ),
+                      _buildLabel('EMAIL ADDRESS'),
                       const SizedBox(height: 8),
                       TextField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
                         decoration: InputDecoration(
-                          hintText: 'name@dpnhs.edu.ph',
+                          hintText: _emailHint,
                           hintStyle: TextStyle(
                             color: Colors.grey.shade400,
                             fontSize: 14,
@@ -280,15 +280,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                       ),
                       if (_pinSent && !_isSuccess) ...[
                         const SizedBox(height: 24),
-                        Text(
-                          'RESET CODE',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1,
-                          ),
-                        ),
+                        _buildLabel('RESET CODE'),
                         const SizedBox(height: 8),
                         TextField(
                           controller: _pinController,
@@ -335,15 +327,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        Text(
-                          'NEW PASSWORD',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1,
-                          ),
-                        ),
+                        _buildLabel('NEW PASSWORD'),
                         const SizedBox(height: 8),
                         TextField(
                           controller: _newPasswordController,
@@ -398,15 +382,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        Text(
-                          'CONFIRM PASSWORD',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1,
-                          ),
-                        ),
+                        _buildLabel('CONFIRM PASSWORD'),
                         const SizedBox(height: 8),
                         TextField(
                           controller: _confirmPasswordController,
@@ -545,6 +521,18 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLabel(String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: Colors.grey.shade600,
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1,
       ),
     );
   }

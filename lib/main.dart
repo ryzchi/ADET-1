@@ -33,6 +33,22 @@ class MyApp extends StatelessWidget {
           );
         }
         
+        // ✅ Handle forgot-password with role argument
+        if (settings.name == '/forgot-password') {
+          final role = settings.arguments as String? ?? 'Student';
+          return MaterialPageRoute(
+            builder: (context) => ForgotPasswordPage(role: role),
+          );
+        }
+        
+        // ✅ Handle reset-password with role argument
+        if (settings.name == '/reset-password') {
+          final role = settings.arguments as String? ?? 'Student';
+          return MaterialPageRoute(
+            builder: (context) => ResetPasswordPage(role: role),
+          );
+        }
+        
         switch (settings.name) {
           case '/login':
           case '/':
@@ -48,15 +64,10 @@ class MyApp extends StatelessWidget {
             return MaterialPageRoute(builder: (context) => const TeacherDashboardPage());
           case '/student-dashboard':
             return MaterialPageRoute(builder: (context) => const StudentDashboardPage());
-          // inalis ang '/upload' route
           case '/register':
             return MaterialPageRoute(builder: (context) => const RegisterPage());
           case '/change-password':
             return MaterialPageRoute(builder: (context) => const ChangePasswordPage());
-          case '/forgot-password':
-            return MaterialPageRoute(builder: (context) => const ForgotPasswordPage());
-          case '/reset-password':
-            return MaterialPageRoute(builder: (context) => const ResetPasswordPage());
           default:
             return MaterialPageRoute(builder: (context) => const LoginPage());
         }

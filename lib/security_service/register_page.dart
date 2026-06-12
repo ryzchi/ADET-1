@@ -13,11 +13,27 @@ class _RegisterPageState extends State<RegisterPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  String _selectedRole = 'Student'; // Default
+  String _selectedRole = 'Student';
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
   String? _errorMessage;
+
+  String _emailHint = 'name@gmail.com'; // Default for Student
+
+  void _updateEmailHint() {
+    setState(() {
+      _emailHint = _selectedRole.toLowerCase() == 'student'
+          ? 'name@gmail.com'
+          : 'name@dpnhs.edu.ph';
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _updateEmailHint();
+  }
 
   Future<void> _register() async {
     setState(() {
@@ -30,7 +46,7 @@ class _RegisterPageState extends State<RegisterPage> {
       _emailController.text,
       _passwordController.text,
       _confirmPasswordController.text,
-      _selectedRole, // Yung selected role ang ipapasa
+      _selectedRole,
     );
 
     setState(() => _isLoading = false);
@@ -243,11 +259,11 @@ class _RegisterPageState extends State<RegisterPage> {
                         keyboardType: TextInputType.emailAddress,
                         decoration: _inputDecoration(
                           Icons.email_outlined,
-                          'name@dpnhs.edu.ph',
+                          _emailHint, // dynamic hint
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _buildLabel('ROLE'), // ✅ ROLE SELECTION DITO
+                      _buildLabel('ROLE'),
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -260,20 +276,23 @@ class _RegisterPageState extends State<RegisterPage> {
                           child: DropdownButton<String>(
                             value: _selectedRole,
                             isExpanded: true,
-                            items:
-                                ['Student', 'Faculty'] // ✅ FACULTY NA DITO
-                                    .map(
-                                      (r) => DropdownMenuItem(
-                                        value: r,
-                                        child: Text(
-                                          r,
-                                          style: const TextStyle(fontSize: 14),
-                                        ),
+                            items: ['Student', 'Faculty']
+                                .map((r) => DropdownMenuItem(
+                                      value: r,
+                                      child: Text(
+                                        r,
+                                        style: const TextStyle(fontSize: 14),
                                       ),
-                                    )
-                                    .toList(),
-                            onChanged: (v) =>
-                                setState(() => _selectedRole = v!),
+                                    ))
+                                .toList(),
+                            onChanged: (v) {
+                              if (v != null) {
+                                setState(() {
+                                  _selectedRole = v;
+                                  _updateEmailHint(); // <-- critical: updates hint
+                                });
+                              }
+                            },
                           ),
                         ),
                       ),
@@ -283,24 +302,22 @@ class _RegisterPageState extends State<RegisterPage> {
                       TextField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
-                        decoration:
-                            _inputDecoration(
-                              Icons.lock_outline,
-                              'Min. 6 characters',
-                            ).copyWith(
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                  color: Colors.grey.shade400,
-                                  size: 20,
-                                ),
-                                onPressed: () => setState(
-                                  () => _obscurePassword = !_obscurePassword,
-                                ),
-                              ),
+                        decoration: _inputDecoration(
+                          Icons.lock_outline,
+                          'Min. 6 characters',
+                        ).copyWith(
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              color: Colors.grey.shade400,
+                              size: 20,
                             ),
+                            onPressed: () =>
+                                setState(() => _obscurePassword = !_obscurePassword),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 16),
                       _buildLabel('CONFIRM PASSWORD'),
@@ -308,24 +325,22 @@ class _RegisterPageState extends State<RegisterPage> {
                       TextField(
                         controller: _confirmPasswordController,
                         obscureText: _obscureConfirm,
-                        decoration:
-                            _inputDecoration(
-                              Icons.lock_outline,
-                              'Re-enter password',
-                            ).copyWith(
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscureConfirm
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                  color: Colors.grey.shade400,
-                                  size: 20,
-                                ),
-                                onPressed: () => setState(
-                                  () => _obscureConfirm = !_obscureConfirm,
-                                ),
-                              ),
+                        decoration: _inputDecoration(
+                          Icons.lock_outline,
+                          'Re-enter password',
+                        ).copyWith(
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureConfirm
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              color: Colors.grey.shade400,
+                              size: 20,
                             ),
+                            onPressed: () =>
+                                setState(() => _obscureConfirm = !_obscureConfirm),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 24),
                       SizedBox(

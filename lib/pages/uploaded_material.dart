@@ -21,3 +21,4 @@ class UploadedMaterial {
     this.fileContent,
   });
 }
+
