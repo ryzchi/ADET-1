@@ -2,14 +2,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'dart:math';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../pages/upload_material_page.dart';
 import '../pages/uploaded_material.dart';
 import '/security_service/auth_service.dart';
 import '/pages/teacher_review_page.dart';
+import '/services/api_client.dart';
 
 class TeacherDashboardPage extends StatefulWidget {
   const TeacherDashboardPage({super.key});
@@ -20,6 +21,7 @@ class TeacherDashboardPage extends StatefulWidget {
 
 class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
   final _authService = AuthService();
+  final ApiClient _api = ApiClient();
   int _selectedIndex = 0;
   bool _isMobile = false;
 
@@ -34,93 +36,107 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadAllData();
     _loadQuizzes();
   }
 
-  Future<void> _loadData() async {
-    final prefs = await SharedPreferences.getInstance();
+  // ========== API LOADERS ==========
+  Future<void> _loadAllData() async {
+    await Future.wait([
+      _loadStudents(),
+      _loadAnnouncements(),
+      _loadMaterials(),
+      _loadAssignments(),
+      _loadSubmissions(),
+      _loadAttendance(),
+    ]);
+    setState(() {});
+  }
 
-    final studentsJson = prefs.getString('teacher_students');
-    if (studentsJson != null) {
-      _students = List<Map<String, dynamic>>.from(jsonDecode(studentsJson));
-    } else {
-      _students = [
-        {'name': 'Juan Dela Cruz', 'id': '2024-0001', 'grade': 'Grade 10-A', 'avg': '92%', 'attendance': '95%'},
-        {'name': 'Maria Santos', 'id': '2024-0002', 'grade': 'Grade 10-A', 'avg': '95%', 'attendance': '98%'},
-        {'name': 'Pedro Reyes', 'id': '2024-0003', 'grade': 'Grade 10-A', 'avg': '78%', 'attendance': '85%'},
-        {'name': 'Ana Garcia', 'id': '2024-0004', 'grade': 'Grade 10-A', 'avg': '88%', 'attendance': '92%'},
-        {'name': 'Jose Lim', 'id': '2024-0005', 'grade': 'Grade 10-A', 'avg': '85%', 'attendance': '90%'},
-        {'name': 'Carmen Tan', 'id': '2024-0006', 'grade': 'Grade 10-A', 'avg': '91%', 'attendance': '96%'},
-        {'name': 'Miguel Cruz', 'id': '2024-0007', 'grade': 'Grade 10-A', 'avg': '73%', 'attendance': '80%'},
-        {'name': 'Sofia Reyes', 'id': '2024-0008', 'grade': 'Grade 10-A', 'avg': '96%', 'attendance': '100%'},
-      ];
-      await _saveStudents();
-    }
-
-    final announcementsJson = prefs.getString('teacher_announcements');
-    if (announcementsJson != null) {
-      _announcements = List<Map<String, dynamic>>.from(jsonDecode(announcementsJson));
-    } else {
-      _announcements = [
-        {'title': 'Midterm Exam Schedule', 'content': 'The midterm examination will be held on November 15-20, 2024.', 'date': 'Oct 25, 2024', 'color': 'blue', 'isNew': true, 'views': 42},
-        {'title': 'Science Fair 2024', 'content': 'Join us for the annual Science Fair on November 10, 2024.', 'date': 'Oct 24, 2024', 'color': 'green', 'isNew': true, 'views': 38},
-        {'title': 'Semestral Break Notice', 'content': 'Classes will be suspended from October 28 to November 3.', 'date': 'Oct 20, 2024', 'color': 'orange', 'isNew': false, 'views': 42},
-      ];
-      await _saveAnnouncements();
-    }
-
-    final materialsJson = prefs.getString('teacher_materials');
-    if (materialsJson != null) {
-      _materials = List<Map<String, dynamic>>.from(jsonDecode(materialsJson));
-    } else {
-      _materials = [
-        {'id': '1', 'title': 'Quadratic Equations', 'subject': 'Mathematics', 'grade': 'Grade 10', 'date': 'Oct 25, 2024', 'format': 'PDF', 'filePath': ''},
-        {'id': '2', 'title': 'Cell Division', 'subject': 'Science', 'grade': 'Grade 10', 'date': 'Oct 28, 2024', 'format': 'PDF', 'filePath': ''},
-        {'id': '3', 'title': 'Philippine Literature', 'subject': 'Filipino', 'grade': 'Grade 10', 'date': 'Nov 2, 2024', 'format': 'DOCX', 'filePath': ''},
-      ];
-      await _saveMaterials();
-    }
-
-    final assignmentsJson = prefs.getString('student_assignments');
-    if (assignmentsJson != null) {
-      _assignments = List<Map<String, dynamic>>.from(jsonDecode(assignmentsJson));
-    } else {
-      _assignments = [
-        {'id': '1', 'title': 'Math Homework', 'description': 'Complete problems 1-20 on page 42.', 'deadline': 'May 30, 2026', 'subject': 'Mathematics', 'status': 'Active'},
-        {'id': '2', 'title': 'Science Project', 'description': 'Build a simple volcano model and write a short report.', 'deadline': 'June 2, 2026', 'subject': 'Science', 'status': 'Active'},
-        {'id': '3', 'title': 'English Essay', 'description': 'Write a 300-word essay on your favorite book.', 'deadline': 'June 5, 2026', 'subject': 'English', 'status': 'Active'},
-        {'id': '4', 'title': 'History Timeline', 'description': 'Create a timeline of World War II events.', 'deadline': 'June 8, 2026', 'subject': 'History', 'status': 'Active'},
-      ];
-      await _saveAssignments();
-    }
-
-    final submissionsJson = prefs.getString('all_submissions');
-    if (submissionsJson != null) {
-      _submissions = List<Map<String, dynamic>>.from(jsonDecode(submissionsJson));
-    } else {
-      _submissions = [];
-    }
-
-    final attendanceJson = prefs.getString('attendance_records');
-    if (attendanceJson != null) {
-      _attendanceRecords = List<Map<String, dynamic>>.from(jsonDecode(attendanceJson));
-    } else {
-      _attendanceRecords = [];
+  Future<void> _loadStudents() async {
+    try {
+      final response = await _api.get('students.php');
+      if (response['success'] == true) {
+        setState(() => _students = List<Map<String, dynamic>>.from(response['students'] ?? []));
+      } else {
+        _students = [];
+      }
+    } catch (e) {
+      _students = [];
     }
   }
 
-  // ==================== QUIZ METHODS ====================
+  Future<void> _loadAnnouncements() async {
+    try {
+      final response = await _api.get('announcements.php');
+      if (response['success'] == true) {
+        setState(() => _announcements = List<Map<String, dynamic>>.from(response['announcements'] ?? []));
+      } else {
+        _announcements = [];
+      }
+    } catch (e) {
+      _announcements = [];
+    }
+  }
+
+  Future<void> _loadMaterials() async {
+    try {
+      final response = await _api.get('materials.php');
+      if (response['success'] == true) {
+        setState(() => _materials = List<Map<String, dynamic>>.from(response['materials'] ?? []));
+      } else {
+        _materials = [];
+      }
+    } catch (e) {
+      _materials = [];
+    }
+  }
+
+  Future<void> _loadAssignments() async {
+    try {
+      final response = await _api.get('assignments.php');
+      if (response['success'] == true) {
+        setState(() => _assignments = List<Map<String, dynamic>>.from(response['assignments'] ?? []));
+      } else {
+        _assignments = [];
+      }
+    } catch (e) {
+      _assignments = [];
+    }
+  }
+
+  Future<void> _loadSubmissions() async {
+    try {
+      final response = await _api.get('submissions.php');
+      if (response['success'] == true) {
+        setState(() => _submissions = List<Map<String, dynamic>>.from(response['submissions'] ?? []));
+      } else {
+        _submissions = [];
+      }
+    } catch (e) {
+      _submissions = [];
+    }
+  }
+
+  Future<void> _loadAttendance() async {
+    final prefs = await SharedPreferences.getInstance();
+    final attendanceJson = prefs.getString('attendance_records');
+    setState(() {
+      _attendanceRecords = attendanceJson != null
+          ? List<Map<String, dynamic>>.from(jsonDecode(attendanceJson))
+          : [];
+    });
+  }
+
+  // ========== QUIZZES ==========
   Future<void> _loadQuizzes() async {
     final prefs = await SharedPreferences.getInstance();
     final quizzesJson = prefs.getString('teacher_quizzes');
-    if (quizzesJson != null) {
-      setState(() {
-        _quizzes = List<Map<String, dynamic>>.from(jsonDecode(quizzesJson));
-      });
-    } else {
-      _quizzes = [];
-    }
+    setState(() {
+      _quizzes = quizzesJson != null
+          ? List<Map<String, dynamic>>.from(jsonDecode(quizzesJson))
+          : [];
+    });
   }
 
   Future<void> _saveQuizzes() async {
@@ -155,12 +171,9 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                   'description': descriptionController.text,
                   'questions': <Map<String, dynamic>>[],
                 };
-                setState(() {
-                  _quizzes.add(newQuiz);
-                });
+                setState(() => _quizzes.add(newQuiz));
                 _saveQuizzes();
                 Navigator.pop(context);
-                // Open the question editor AFTER the quiz is persisted in memory.
                 _editQuizQuestions(newQuiz);
               }
             },
@@ -170,7 +183,6 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
       ),
     );
   }
-
 
   Future<void> _editQuizQuestions(Map<String, dynamic> quiz) async {
     final List<Map<String, dynamic>> questions = List.from(quiz['questions']);
@@ -245,14 +257,12 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
   void _saveQuizQuestions(Map<String, dynamic> quiz, List<Map<String, dynamic>> questions) {
     final index = _quizzes.indexWhere((q) => q['id'] == quiz['id']);
     if (index != -1) {
-      setState(() {
-        _quizzes[index]['questions'] = questions;
-      });
+      setState(() => _quizzes[index]['questions'] = questions);
       _saveQuizzes();
     }
   }
 
-Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dynamic>> questions, StateSetter setStateDialog, int? editIndex) async {
+  Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dynamic>> questions, StateSetter setStateDialog, int? editIndex) async {
     if (editIndex != null) {
       await _editSingleQuestionDialog(quiz, questions, setStateDialog, editIndex);
       return;
@@ -412,8 +422,6 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                   questions.add(newQuestion);
                   setStateDialog(() {});
                   _saveQuizQuestions(quiz, questions);
-
-                  // Clear all text controllers para sa next question
                   questionTextController.clear();
                   correctAnswerController.clear();
                   identificationAnswerController.clear();
@@ -427,9 +435,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                     TextEditingController(),
                     TextEditingController(),
                   ];
-
                   setStateInner(() {});
-
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Question added!'), duration: Duration(seconds: 1)),
                   );
@@ -456,7 +462,6 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
       ),
     );
   }
-
 
   Future<void> _editSingleQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dynamic>> questions, StateSetter setStateDialog, int editIndex) async {
     final q = questions[editIndex];
@@ -586,244 +591,10 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
     );
   }
 
-  // ==================== DATA PERSISTENCE ====================
-  Future<void> _saveMaterials() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('teacher_materials', jsonEncode(_materials));
-  }
-
-  Future<void> _saveAssignments() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('student_assignments', jsonEncode(_assignments));
-  }
-
-  Future<void> _saveStudents() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('teacher_students', jsonEncode(_students));
-  }
-
-  Future<void> _saveAnnouncements() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('teacher_announcements', jsonEncode(_announcements));
-  }
-
+  // ========== ATTENDANCE ==========
   Future<void> _saveAttendanceRecords() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('attendance_records', jsonEncode(_attendanceRecords));
-  }
-
-  Future<void> _logout() async {
-    try {
-      await _authService.logout();
-      if (mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Logout failed: $e')));
-      }
-    }
-  }
-
-  int _getPendingSubmissionsCount() {
-    return _submissions.where((s) => s['status'] == 'Pending').length;
-  }
-
-  void _showAddStudentDialog() {
-    final nameController = TextEditingController();
-    final idController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add New Student'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameController, decoration: const InputDecoration(hintText: 'Juan Dela Cruz', labelText: 'Full Name')),
-            const SizedBox(height: 8),
-            TextField(controller: idController, decoration: const InputDecoration(hintText: '2024-0009', labelText: 'Student ID')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              if (nameController.text.isNotEmpty && idController.text.isNotEmpty) {
-                setState(() {
-                  _students.add({
-                    'name': nameController.text,
-                    'id': idController.text,
-                    'grade': 'Grade 10-A',
-                    'avg': '${Random().nextInt(25) + 70}%',
-                    'attendance': '${Random().nextInt(20) + 80}%',
-                  });
-                });
-                _saveStudents();
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Student added successfully!')));
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _deleteStudent(int index) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Student'),
-        content: Text('Are you sure you want to delete ${_students[index]['name']}?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              setState(() { _students.removeAt(index); });
-              _saveStudents();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Student deleted!')));
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAddAnnouncementDialog() {
-    final titleController = TextEditingController();
-    final contentController = TextEditingController();
-    String selectedColor = 'blue';
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('New Announcement'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: titleController, decoration: const InputDecoration(hintText: 'Announcement Title', labelText: 'Title')),
-              const SizedBox(height: 8),
-              TextField(controller: contentController, decoration: const InputDecoration(hintText: 'Enter announcement details...', labelText: 'Content'), maxLines: 3),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: selectedColor,
-                decoration: const InputDecoration(labelText: 'Color Category'),
-                items: const [
-                  DropdownMenuItem(value: 'blue', child: Text('Blue - General')),
-                  DropdownMenuItem(value: 'green', child: Text('Green - Success')),
-                  DropdownMenuItem(value: 'orange', child: Text('Orange - Important')),
-                ],
-                onChanged: (value) {
-                  setDialogState(() {
-                    selectedColor = value ?? 'blue';
-                  });
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () {
-                if (titleController.text.isNotEmpty && contentController.text.isNotEmpty) {
-                  setState(() {
-                    _announcements.insert(0, {
-                      'title': titleController.text,
-                      'content': contentController.text,
-                      'date': 'Just now',
-                      'color': selectedColor,
-                      'isNew': true,
-                      'views': 0,
-                    });
-                  });
-                  _saveAnnouncements();
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Announcement posted!')));
-                }
-              },
-              child: const Text('Post'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _deleteAnnouncement(int index) {
-    setState(() { _announcements.removeAt(index); });
-    _saveAnnouncements();
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Announcement deleted!')));
-  }
-
-  void _showEditAnnouncementDialog(int index) {
-    final announcement = _announcements[index];
-    final titleController = TextEditingController(text: announcement['title']);
-    final contentController = TextEditingController(text: announcement['content']);
-    String selectedColor = announcement['color'] ?? 'blue';
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Announcement'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(hintText: 'Announcement Title', labelText: 'Title'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: contentController,
-              decoration: const InputDecoration(hintText: 'Enter announcement details...', labelText: 'Content'),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: selectedColor,
-              decoration: const InputDecoration(labelText: 'Color Category'),
-              items: const [
-                DropdownMenuItem(value: 'blue', child: Text('Blue - General')),
-                DropdownMenuItem(value: 'green', child: Text('Green - Success')),
-                DropdownMenuItem(value: 'orange', child: Text('Orange - Important')),
-              ],
-              onChanged: (value) {
-                selectedColor = value ?? 'blue';
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              if (titleController.text.isNotEmpty && contentController.text.isNotEmpty) {
-                setState(() {
-                  _announcements[index] = {
-                    'title': titleController.text,
-                    'content': contentController.text,
-                    'date': _announcements[index]['date'],
-                    'color': selectedColor,
-                    'isNew': false,
-                    'views': _announcements[index]['views'] ?? 0,
-                  };
-                });
-                _saveAnnouncements();
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Announcement updated!')));
-              }
-            },
-            child: const Text('Update'),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _createAttendanceRecord() async {
@@ -836,19 +607,15 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
     );
     if (picked == null) return;
     selectedDate = picked;
-    
     final dateKey = "${selectedDate.year}-${selectedDate.month}-${selectedDate.day}";
-    final existingIndex = _attendanceRecords.indexWhere((r) => r['date'] == dateKey);
-    if (existingIndex != -1) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance record already exists for this date')));
+    if (_attendanceRecords.any((r) => r['date'] == dateKey)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance already exists for this date')));
       return;
     }
-    
     Map<String, String> statuses = {};
     for (var student in _students) {
-      statuses[student['id']] = 'Present';
+      statuses[student['id'].toString()] = 'Present';
     }
-    
     setState(() {
       _attendanceRecords.add({
         'date': dateKey,
@@ -863,9 +630,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
   void _markAttendanceForDate(String dateKey) {
     final recordIndex = _attendanceRecords.indexWhere((r) => r['date'] == dateKey);
     if (recordIndex == -1) return;
-    
     Map<String, String> currentStatuses = Map.from(_attendanceRecords[recordIndex]['statuses']);
-    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -885,17 +650,12 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                     children: [
                       Container(
                         padding: const EdgeInsets.all(16),
-                        decoration: const BoxDecoration(
-                          border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-                        ),
+                        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text('Attendance for $dateKey', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
-                            IconButton(
-                              icon: const Icon(Icons.close),
-                              onPressed: () => Navigator.pop(context),
-                            ),
+                            IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                           ],
                         ),
                       ),
@@ -905,7 +665,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                           itemCount: _students.length,
                           itemBuilder: (ctx, index) {
                             final student = _students[index];
-                            final studentId = student['id'];
+                            final studentId = student['id'].toString();
                             String status = currentStatuses[studentId] ?? 'Present';
                             return Container(
                               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -919,7 +679,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                                 children: [
                                   CircleAvatar(
                                     radius: 20,
-                                    backgroundColor: const Color(0xFF0d2b5c).withOpacity(0.1),
+                                    backgroundColor: const Color(0xFF0d2b5c).withValues(alpha: 0.1),
                                     child: Text(student['name'][0], style: const TextStyle(color: Color(0xFF0d2b5c), fontWeight: FontWeight.bold)),
                                   ),
                                   const SizedBox(width: 12),
@@ -928,7 +688,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(student['name'], style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF1a2b4a))),
-                                        Text(student['id'], style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                                        Text(student['email'] ?? '', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
                                       ],
                                     ),
                                   ),
@@ -941,9 +701,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                                     selected: {status},
                                     onSelectionChanged: (Set<String> newSelection) {
                                       final newStatus = newSelection.first;
-                                      setSheetState(() {
-                                        currentStatuses[studentId] = newStatus;
-                                      });
+                                      setSheetState(() => currentStatuses[studentId] = newStatus);
                                     },
                                     style: ButtonStyle(
                                       backgroundColor: WidgetStateProperty.resolveWith((states) {
@@ -972,41 +730,25 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                       ),
                       Container(
                         padding: const EdgeInsets.all(16),
-                        decoration: const BoxDecoration(
-                          border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
-                        ),
+                        decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFFE2E8F0)))),
                         child: Row(
                           children: [
                             Expanded(
                               child: ElevatedButton(
                                 onPressed: () async {
-                                  setState(() {
-                                    _attendanceRecords[recordIndex]['statuses'] = currentStatuses;
-                                  });
+                                  setState(() => _attendanceRecords[recordIndex]['statuses'] = currentStatuses);
                                   await _saveAttendanceRecords();
                                   if (mounted) {
                                     Navigator.pop(context);
                                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance saved!')));
                                   }
                                 },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF0d2b5c),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                ),
-                                child: const Text('Save Attendance', style: TextStyle(fontWeight: FontWeight.bold)),
+                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white),
+                                child: const Text('Save Attendance'),
                               ),
                             ),
                             const SizedBox(width: 12),
-                            OutlinedButton(
-                              onPressed: () => Navigator.pop(context),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              child: const Text('Cancel'),
-                            ),
+                            OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
                           ],
                         ),
                       ),
@@ -1037,23 +779,18 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
               children: [
                 Container(
                   padding: const EdgeInsets.all(16),
-                  decoration: const BoxDecoration(
-                    border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-                  ),
+                  decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Attendance History', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
+                      const Text('Attendance History', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                     ],
                   ),
                 ),
                 Expanded(
                   child: _attendanceRecords.isEmpty
-                      ? const Center(child: Text('No attendance records yet. Create one!', style: TextStyle(color: Colors.grey)))
+                      ? const Center(child: Text('No attendance records yet.'))
                       : ListView.builder(
                           controller: scrollController,
                           itemCount: _attendanceRecords.length,
@@ -1067,56 +804,39 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                             return Container(
                               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: const Color(0xFFE2E8F0)),
-                              ),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(date, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1a2b4a))),
+                                      Text(date, style: const TextStyle(fontWeight: FontWeight.bold)),
                                       Row(
                                         children: [
-                                          IconButton(
-                                            icon: const Icon(Icons.edit, size: 18, color: Colors.blue),
-                                            onPressed: () {
-                                              Navigator.pop(context);
-                                              _markAttendanceForDate(record['date']);
-                                            },
-                                            tooltip: 'Edit',
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                                            onPressed: () {
-                                              showDialog(
-                                                context: context,
-                                                builder: (ctx) => AlertDialog(
-                                                  title: const Text('Delete Record'),
-                                                  content: const Text('Are you sure you want to delete this attendance record?'),
-                                                  actions: [
-                                                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                                                    TextButton(
-                                                      onPressed: () {
-                                                        setState(() {
-                                                          _attendanceRecords.removeAt(index);
-                                                        });
-                                                        _saveAttendanceRecords();
-                                                        Navigator.pop(ctx);
-                                                        Navigator.pop(context);
-                                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance record deleted')));
-                                                      },
-                                                      child: const Text('Delete', style: TextStyle(color: Colors.red)),
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                            },
-                                            tooltip: 'Delete',
-                                          ),
+                                          IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () { Navigator.pop(context); _markAttendanceForDate(record['date']); }),
+                                          IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () {
+                                            showDialog(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                title: const Text('Delete Record'),
+                                                content: const Text('Are you sure you want to delete this attendance record?'),
+                                                actions: [
+                                                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                                                  TextButton(
+                                                    onPressed: () {
+                                                      setState(() => _attendanceRecords.removeAt(index));
+                                                      _saveAttendanceRecords();
+                                                      Navigator.pop(ctx);
+                                                      Navigator.pop(context);
+                                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance record deleted')));
+                                                    },
+                                                    child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }),
                                         ],
                                       ),
                                     ],
@@ -1125,33 +845,13 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                                   Wrap(
                                     spacing: 16,
                                     children: [
-                                      Chip(
-                                        avatar: const Icon(Icons.check_circle, size: 16, color: Colors.green),
-                                        label: Text('Present: $present'),
-                                        backgroundColor: Colors.green.shade50,
-                                      ),
-                                      Chip(
-                                        avatar: const Icon(Icons.access_time, size: 16, color: Colors.orange),
-                                        label: Text('Late: $late'),
-                                        backgroundColor: Colors.orange.shade50,
-                                      ),
-                                      Chip(
-                                        avatar: const Icon(Icons.cancel, size: 16, color: Colors.red),
-                                        label: Text('Absent: $absent'),
-                                        backgroundColor: Colors.red.shade50,
-                                      ),
+                                      Chip(avatar: const Icon(Icons.check_circle, size: 16, color: Colors.green), label: Text('Present: $present'), backgroundColor: Colors.green.shade50),
+                                      Chip(avatar: const Icon(Icons.access_time, size: 16, color: Colors.orange), label: Text('Late: $late'), backgroundColor: Colors.orange.shade50),
+                                      Chip(avatar: const Icon(Icons.cancel, size: 16, color: Colors.red), label: Text('Absent: $absent'), backgroundColor: Colors.red.shade50),
                                     ],
                                   ),
                                   const SizedBox(height: 8),
-                                  TextButton.icon(
-                                    onPressed: () {
-                                      Navigator.pop(context);
-                                      _markAttendanceForDate(record['date']);
-                                    },
-                                    icon: const Icon(Icons.edit_note, size: 16),
-                                    label: const Text('Edit details'),
-                                    style: TextButton.styleFrom(foregroundColor: const Color(0xFF0d2b5c)),
-                                  ),
+                                  TextButton.icon(onPressed: () { Navigator.pop(context); _markAttendanceForDate(record['date']); }, icon: const Icon(Icons.edit_note), label: const Text('Edit details')),
                                 ],
                               ),
                             );
@@ -1168,32 +868,15 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
 
   void _generateAttendanceSummary() {
     if (_attendanceRecords.isEmpty) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('No Data'),
-          content: const Text('No attendance records found. Create attendance records first.'),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-        ),
-      );
+      showDialog(context: context, builder: (context) => AlertDialog(title: const Text('No Data'), content: const Text('No attendance records found.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))]));
       return;
     }
-
-    int totalPresent = 0;
-    int totalLate = 0;
-    int totalAbsent = 0;
+    int totalPresent = 0, totalLate = 0, totalAbsent = 0;
     int totalDays = _attendanceRecords.length;
-
     Map<String, Map<String, dynamic>> studentSummary = {};
     for (var student in _students) {
-      studentSummary[student['id']] = {
-        'name': student['name'],
-        'present': 0,
-        'late': 0,
-        'absent': 0,
-      };
+      studentSummary[student['id'].toString()] = {'name': student['name'], 'present': 0, 'late': 0, 'absent': 0};
     }
-
     for (var record in _attendanceRecords) {
       Map<String, String> statuses = Map.from(record['statuses']);
       for (var entry in statuses.entries) {
@@ -1201,25 +884,14 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
         String status = entry.value;
         var summary = studentSummary[studentId];
         if (summary != null) {
-          if (status == 'Present') {
-            summary['present'] = (summary['present'] ?? 0) + 1;
-            totalPresent++;
-          } else if (status == 'Late') {
-            summary['late'] = (summary['late'] ?? 0) + 1;
-            totalLate++;
-          } else if (status == 'Absent') {
-            summary['absent'] = (summary['absent'] ?? 0) + 1;
-            totalAbsent++;
-          }
+          if (status == 'Present') { summary['present'] = (summary['present'] ?? 0) + 1; totalPresent++; }
+          else if (status == 'Late') { summary['late'] = (summary['late'] ?? 0) + 1; totalLate++; }
+          else if (status == 'Absent') { summary['absent'] = (summary['absent'] ?? 0) + 1; totalAbsent++; }
         }
       }
     }
-
     int totalEvents = totalPresent + totalLate + totalAbsent;
     double overallPresentPercent = totalEvents > 0 ? (totalPresent / totalEvents) * 100 : 0;
-    double overallLatePercent = totalEvents > 0 ? (totalLate / totalEvents) * 100 : 0;
-    double overallAbsentPercent = totalEvents > 0 ? (totalAbsent / totalEvents) * 100 : 0;
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1233,106 +905,57 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
           builder: (context, scrollController) {
             return Column(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: const BoxDecoration(
-                    border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Attendance Summary', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
+                Container(padding: const EdgeInsets.all(16), decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Attendance Summary', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))])),
                 Expanded(
                   child: ListView(
                     controller: scrollController,
                     padding: const EdgeInsets.all(16),
                     children: [
-                      Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE2E8F0))),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Overall Statistics', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(child: _summaryStat('Total Days', totalDays.toString(), Colors.blue)),
-                                  Expanded(child: _summaryStat('Total Present', totalPresent.toString(), Colors.green)),
-                                  Expanded(child: _summaryStat('Total Late', totalLate.toString(), Colors.orange)),
-                                  Expanded(child: _summaryStat('Total Absent', totalAbsent.toString(), Colors.red)),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              LinearProgressIndicator(
-                                value: totalEvents > 0 ? totalPresent / totalEvents : 0,
-                                backgroundColor: Colors.grey.shade200,
-                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
-                                minHeight: 8,
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text('Present: ${overallPresentPercent.toStringAsFixed(1)}%', style: const TextStyle(color: Colors.green)),
-                                  Text('Late: ${overallLatePercent.toStringAsFixed(1)}%', style: const TextStyle(color: Colors.orange)),
-                                  Text('Absent: ${overallAbsentPercent.toStringAsFixed(1)}%', style: const TextStyle(color: Colors.red)),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
+                      Card(elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE2E8F0))),
+                        child: Padding(padding: const EdgeInsets.all(16), child: Column(
+                          children: [
+                            const Text('Overall Statistics', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 12),
+                            Row(children: [
+                              Expanded(child: _summaryStat('Total Days', totalDays.toString(), Colors.blue)),
+                              Expanded(child: _summaryStat('Total Present', totalPresent.toString(), Colors.green)),
+                              Expanded(child: _summaryStat('Total Late', totalLate.toString(), Colors.orange)),
+                              Expanded(child: _summaryStat('Total Absent', totalAbsent.toString(), Colors.red)),
+                            ]),
+                            const SizedBox(height: 16),
+                            LinearProgressIndicator(value: totalEvents > 0 ? totalPresent / totalEvents : 0, backgroundColor: Colors.grey.shade200, valueColor: const AlwaysStoppedAnimation<Color>(Colors.green), minHeight: 8),
+                            const SizedBox(height: 8),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Present: ${overallPresentPercent.toStringAsFixed(1)}%', style: const TextStyle(color: Colors.green))]),
+                          ],
+                        )),
                       ),
                       const SizedBox(height: 16),
-                      Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE2E8F0))),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Student-wise Summary', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 12),
-                              SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: DataTable(
-                                  columnSpacing: 16,
-                                  columns: const [
-                                    DataColumn(label: Text('Student')),
-                                    DataColumn(label: Text('Present')),
-                                    DataColumn(label: Text('Late')),
-                                    DataColumn(label: Text('Absent')),
-                                    DataColumn(label: Text('Rate')),
-                                  ],
-                                  rows: studentSummary.values.map((data) {
-                                    int present = data['present'];
-                                    int late = data['late'];
-                                    int absent = data['absent'];
-                                    int total = present + late + absent;
-                                    double rate = total > 0 ? (present / total) * 100 : 0;
-                                    return DataRow(cells: [
-                                      DataCell(Text(data['name'], style: const TextStyle(fontWeight: FontWeight.w500))),
-                                      DataCell(Text(present.toString(), style: const TextStyle(color: Colors.green))),
-                                      DataCell(Text(late.toString(), style: const TextStyle(color: Colors.orange))),
-                                      DataCell(Text(absent.toString(), style: const TextStyle(color: Colors.red))),
-                                      DataCell(Text('${rate.toStringAsFixed(1)}%', style: TextStyle(color: rate >= 85 ? Colors.green : rate >= 75 ? Colors.orange : Colors.red, fontWeight: FontWeight.w600))),
-                                    ]);
-                                  }).toList(),
-                                ),
+                      Card(elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE2E8F0))),
+                        child: Padding(padding: const EdgeInsets.all(16), child: Column(
+                          children: [
+                            const Text('Student-wise Summary', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 12),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: DataTable(
+                                columnSpacing: 16,
+                                columns: const [DataColumn(label: Text('Student')), DataColumn(label: Text('Present')), DataColumn(label: Text('Late')), DataColumn(label: Text('Absent')), DataColumn(label: Text('Rate'))],
+                                rows: studentSummary.values.map((data) {
+                                  int present = data['present'], late = data['late'], absent = data['absent'], total = present + late + absent;
+                                  double rate = total > 0 ? (present / total) * 100 : 0;
+                                  return DataRow(cells: [
+                                    DataCell(Text(data['name'], style: const TextStyle(fontWeight: FontWeight.w500))),
+                                    DataCell(Text(present.toString(), style: const TextStyle(color: Colors.green))),
+                                    DataCell(Text(late.toString(), style: const TextStyle(color: Colors.orange))),
+                                    DataCell(Text(absent.toString(), style: const TextStyle(color: Colors.red))),
+                                    DataCell(Text('${rate.toStringAsFixed(1)}%', style: TextStyle(color: rate >= 85 ? Colors.green : rate >= 75 ? Colors.orange : Colors.red, fontWeight: FontWeight.w600))),
+                                  ]);
+                                }).toList(),
                               ),
-                            ],
-                          ),
-                        ),
+                            ),
+                          ],
+                        )),
                       ),
                     ],
                   ),
@@ -1354,207 +977,68 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
     );
   }
 
-  void _showCreateAssignmentDialog() {
-    final titleController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final deadlineController = TextEditingController();
-    final subjectController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Create New Assignment'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Assignment Title', hintText: 'e.g., Chapter 5 Exercises')),
-              const SizedBox(height: 12),
-              TextField(controller: subjectController, decoration: const InputDecoration(labelText: 'Subject', hintText: 'e.g., Mathematics')),
-              const SizedBox(height: 12),
-              TextField(controller: descriptionController, decoration: const InputDecoration(labelText: 'Description', hintText: 'Enter assignment details...'), maxLines: 3),
-              const SizedBox(height: 12),
-              TextField(controller: deadlineController, decoration: const InputDecoration(labelText: 'Deadline', hintText: 'e.g., Nov 1, 2024')),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              if (titleController.text.isNotEmpty && descriptionController.text.isNotEmpty && deadlineController.text.isNotEmpty && subjectController.text.isNotEmpty) {
-                final newAssignment = {
-                  'id': DateTime.now().millisecondsSinceEpoch.toString(),
-                  'title': titleController.text,
-                  'description': descriptionController.text,
-                  'deadline': deadlineController.text,
-                  'subject': subjectController.text,
-                  'status': 'Active',
-                };
-                setState(() { _assignments.add(newAssignment); });
-                await _saveAssignments();
-                if (mounted) Navigator.pop(context);
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Assignment created successfully!')));
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
-              }
-            },
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _deleteAssignment(String id) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Assignment'),
-        content: const Text('Are you sure you want to delete this assignment?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              setState(() { _assignments.removeWhere((a) => a['id'] == id); });
-              _saveAssignments();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Assignment deleted successfully!')));
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ==================== FILE VIEW & DOWNLOAD (GUMAAGANA NA) ====================
+  // ========== FILE VIEW & DOWNLOAD ==========
   Future<void> _viewMaterial(String filePath, String title) async {
     if (filePath.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No file associated with this material.')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No file associated.')));
       return;
     }
     final file = File(filePath);
     if (!await file.exists()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('File not found. It may have been moved or deleted.')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('File not found.')));
       return;
     }
     final result = await OpenFile.open(filePath);
     if (result.type != ResultType.done && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open file: ${result.message}')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open file: ${result.message}')));
     }
   }
 
   Future<void> _downloadMaterialToDevice(String sourcePath, String fileName) async {
     if (sourcePath.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No file to download.')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No file to download.')));
       return;
     }
-
     if (Platform.isAndroid) {
       final status = await Permission.storage.request();
       if (!status.isGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Storage permission required to download files.')),
-          );
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Storage permission required.')));
         return;
       }
     }
-
     final sourceFile = File(sourcePath);
     if (!await sourceFile.exists()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Source file not found.')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Source file not found.')));
       return;
     }
-
     Directory destDir;
     if (Platform.isAndroid) {
       destDir = Directory('/storage/emulated/0/Download');
-      if (!await destDir.exists()) {
-        destDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-      }
+      if (!await destDir.exists()) destDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
     } else {
       destDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
     }
-
     final destFile = File('${destDir.path}/$fileName');
     try {
       await sourceFile.copy(destFile.path);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Downloaded to ${destFile.path}')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Downloaded to ${destFile.path}')));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Download failed: $e')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Download failed: $e')));
     }
   }
 
-  void _addUploadedMaterial(UploadedMaterial uploadedMaterial) async {
-  final fileExtension = uploadedMaterial.fileName.split('.').last.toUpperCase();
-  String? localPath;
-
-  // If fileBytes are provided, save them to a local file
-  if (uploadedMaterial.fileBytes != null && uploadedMaterial.fileBytes!.isNotEmpty) {
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/${uploadedMaterial.fileName}');
-      await file.writeAsBytes(uploadedMaterial.fileBytes!);
-      localPath = file.path;
-    } catch (e) {
-      print('Error saving file: $e');
-    }
-  } 
-  // Otherwise use fileUrl (if available)
-  else if (uploadedMaterial.fileUrl != null && uploadedMaterial.fileUrl!.isNotEmpty) {
-    localPath = uploadedMaterial.fileUrl; // will be treated as remote URL
+  void _downloadMaterial(String id, String title) {
+    final material = _materials.firstWhere((m) => m['id'].toString() == id);
+    final filePath = material['file_url'] ?? '';
+    final fileName = material['title'] ?? 'document';
+    _downloadMaterialToDevice(filePath, fileName);
   }
 
-  setState(() {
-    _materials.insert(0, {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'title': uploadedMaterial.title,
-      'subject': uploadedMaterial.subject,
-      'grade': 'Grade 10',
-      'date': DateTime.now().toString().split(' ')[0],
-      'format': fileExtension,
-      'fileName': uploadedMaterial.fileName,
-      'filePath': localPath ?? '',          // store local path or URL
-      'fileUrl': uploadedMaterial.fileUrl,  // keep original URL
-    });
-  });
-  _saveMaterials();
-  if (mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${uploadedMaterial.title} added to Lesson Plans!')),
-    );
+  void _showMaterialDetails(String title, String subject, String date, String id) {
+    final material = _materials.firstWhere((m) => m['id'].toString() == id);
+    final filePath = material['file_url'] ?? '';
+    _viewMaterial(filePath, title);
   }
-}
 
   void _showEditMaterialDialog(String id, String title, String subject, String format) {
     final titleController = TextEditingController(text: title);
@@ -1563,21 +1047,16 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Edit Learning Material'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title')), const SizedBox(height: 12), TextField(controller: subjectController, decoration: const InputDecoration(labelText: 'Subject'))]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title')),
+          const SizedBox(height: 12),
+          TextField(controller: subjectController, decoration: const InputDecoration(labelText: 'Subject')),
+        ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
-              setState(() {
-                final index = _materials.indexWhere((m) => m['id'] == id);
-                if (index != -1) {
-                  _materials[index]['title'] = titleController.text;
-                  _materials[index]['subject'] = subjectController.text;
-                }
-              });
-              _saveMaterials();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Material updated successfully!')));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Edit not yet implemented via API')));
             },
             child: const Text('Update'),
           ),
@@ -1596,10 +1075,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
-              setState(() { _materials.removeWhere((m) => m['id'] == id); });
-              _saveMaterials();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Material deleted successfully!')));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Delete not yet implemented via API')));
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete'),
@@ -1609,24 +1085,351 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
     );
   }
 
-  void _downloadMaterial(String id, String title) {
-    final material = _materials.firstWhere((m) => m['id'] == id);
-    final filePath = material['filePath'] ?? '';
-    final fileName = material['fileName'] ?? 'document';
-    _downloadMaterialToDevice(filePath, fileName);
+  // ========== ANNOUNCEMENTS API ==========
+  Future<void> _createAnnouncement(String title, String content, String color) async {
+    try {
+      final response = await _api.post('announcements.php', {
+        'action': 'create',
+        'title': title,
+        'content': content,
+        'color': color,
+        'author_id': _authService.currentUserId ?? 0,
+      });
+      if (response['success'] == true) {
+        await _loadAnnouncements();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Announcement posted!')));
+        }
+      } else {
+        throw Exception(response['message'] ?? 'Failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
   }
 
-  void _showMaterialDetails(String title, String subject, String date, String id) {
-    final material = _materials.firstWhere((m) => m['id'] == id);
-    final filePath = material['filePath'] ?? '';
-    _viewMaterial(filePath, title);
+  Future<void> _deleteAnnouncementById(int id) async {
+    try {
+      final response = await _api.post('announcements.php', {
+        'action': 'delete',
+        'id': id,
+      });
+      if (response['success'] == true) {
+        await _loadAnnouncements();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Announcement deleted!')));
+        }
+      } else {
+        throw Exception(response['message'] ?? 'Failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
   }
 
-  // ==================== BUILD ====================
+  void _showAddAnnouncementDialog() {
+    final titleController = TextEditingController();
+    final contentController = TextEditingController();
+    String selectedColor = 'blue';
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('New Announcement'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title')),
+              const SizedBox(height: 12),
+              TextField(controller: contentController, decoration: const InputDecoration(labelText: 'Content'), maxLines: 3),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: selectedColor,
+                decoration: const InputDecoration(labelText: 'Color Category'),
+                items: const [
+                  DropdownMenuItem(value: 'blue', child: Text('Blue - General')),
+                  DropdownMenuItem(value: 'green', child: Text('Green - Success')),
+                  DropdownMenuItem(value: 'orange', child: Text('Orange - Important')),
+                ],
+                onChanged: (value) {
+                  setDialogState(() {
+                    selectedColor = value ?? 'blue';
+                  });
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                if (titleController.text.isNotEmpty && contentController.text.isNotEmpty) {
+                  Navigator.pop(context);
+                  await _createAnnouncement(titleController.text, contentController.text, selectedColor);
+                }
+              },
+              child: const Text('Post'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ========== MATERIALS API ==========
+  Future<void> _addUploadedMaterial(UploadedMaterial uploadedMaterial) async {
+    final fileExtension = uploadedMaterial.fileName.split('.').last.toUpperCase();
+    String? localPath;
+
+    if (!kIsWeb && uploadedMaterial.fileBytes != null && uploadedMaterial.fileBytes!.isNotEmpty) {
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        final file = File('${dir.path}/${uploadedMaterial.fileName}');
+        await file.writeAsBytes(uploadedMaterial.fileBytes!);
+        localPath = file.path;
+      } catch (e) {
+        print('Error saving file: $e');
+      }
+    } else if (uploadedMaterial.fileUrl != null && uploadedMaterial.fileUrl!.isNotEmpty) {
+      localPath = uploadedMaterial.fileUrl;
+    }
+
+    final newMaterial = {
+      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'title': uploadedMaterial.title,
+      'subject': uploadedMaterial.subject,
+      'date': DateTime.now().toString().split(' ')[0],
+      'format': fileExtension,
+      'filePath': localPath ?? '',
+      'fileUrl': uploadedMaterial.fileUrl,
+    };
+    setState(() {
+      _materials.insert(0, newMaterial);
+    });
+
+    try {
+      final response = await _api.post('materials.php', {
+        'action': 'create',
+        'title': uploadedMaterial.title,
+        'subject': uploadedMaterial.subject,
+        'type': fileExtension,
+        'file_url': localPath ?? '',
+        'uploaded_by': _authService.currentUserId ?? 0,
+      });
+      if (response['success'] != true) {
+        print('API save failed: ${response['message']}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Database save failed: ${response['message']}'), backgroundColor: Colors.red),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${uploadedMaterial.title} added to Lesson Plans!')),
+          );
+        }
+      }
+    } catch (e) {
+      print('API error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Connection error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // ========== ASSIGNMENTS API ==========
+  Future<void> _createAssignment(String title, String description, String deadline, String subject) async {
+    try {
+      final response = await _api.post('assignments.php', {
+        'title': title,
+        'description': description,
+        'deadline': deadline,
+        'subject': subject,
+      });
+      if (response['success'] == true) {
+        await _loadAssignments();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Assignment created!')));
+        }
+      } else {
+        throw Exception(response['message'] ?? 'Creation failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _deleteAssignmentById(int id) async {
+    try {
+      final response = await _api.post('assignments.php', {
+        'action': 'delete',
+        'id': id,
+      });
+      if (response['success'] == true) {
+        await _loadAssignments();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Assignment deleted!')));
+        }
+      } else {
+        throw Exception(response['message'] ?? 'Delete failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  void _showCreateAssignmentDialog() {
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+    DateTime? selectedDateTime;
+
+    final List<String> subjects = [
+      'Mathematics',
+      'Science',
+      'English',
+      'Filipino',
+      'AP',
+      'ESP',
+      'TLE',
+      'MAPEH'
+    ];
+    String selectedSubject = 'Mathematics';
+
+    Future<void> selectDateTime() async {
+      final pickedDate = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime.now(),
+        lastDate: DateTime(2030),
+      );
+      if (pickedDate != null) {
+        final pickedTime = await showTimePicker(
+          context: context,
+          initialTime: const TimeOfDay(hour: 23, minute: 59),
+        );
+        if (pickedTime != null) {
+          selectedDateTime = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            pickedTime.hour,
+            pickedTime.minute,
+          );
+        }
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          title: const Text('Create New Assignment'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(labelText: 'Assignment Title', hintText: 'e.g., Chapter 5 Exercises'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedSubject,
+                  decoration: const InputDecoration(labelText: 'Subject'),
+                  items: subjects.map((subject) => DropdownMenuItem(value: subject, child: Text(subject))).toList(),
+                  onChanged: (value) {
+                    setStateDialog(() {
+                      selectedSubject = value!;
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descriptionController,
+                  decoration: const InputDecoration(labelText: 'Description', hintText: 'Enter assignment details...'),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  title: const Text('Deadline'),
+                  subtitle: Text(selectedDateTime == null ? 'Not set' : selectedDateTime!.toLocal().toString()),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    await selectDateTime();
+                    setStateDialog(() {});
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                if (titleController.text.isNotEmpty && selectedDateTime != null) {
+                  Navigator.pop(context);
+                  await _createAssignment(
+                    titleController.text,
+                    descriptionController.text,
+                    selectedDateTime!.toIso8601String(),
+                    selectedSubject,
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please fill in title and deadline')),
+                  );
+                }
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ========== LOGOUT ==========
+  Future<void> _logout() async {
+    try {
+      await _authService.logout();
+      if (mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Logout failed: $e')));
+      }
+    }
+  }
+
+  int _getPendingSubmissionsCount() {
+    return _submissions.where((s) => s['status'] == 'Pending').length;
+  }
+
+  String _getDisplayDate(Map<String, dynamic> material) {
+    String rawDate = material['created_at']?.toString() ?? material['date']?.toString() ?? '';
+    if (rawDate.isEmpty) return 'No date';
+    if (rawDate.contains(' ')) return rawDate.split(' ')[0];
+    if (rawDate.contains('T')) return rawDate.split('T')[0];
+    return rawDate;
+  }
+
+  // ========== BUILD UI ==========
   @override
   Widget build(BuildContext context) {
     _isMobile = MediaQuery.of(context).size.width < 900;
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: _isMobile ? _buildMobileAppBar() : null,
@@ -1678,7 +1481,6 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
             const PopupMenuItem(value: 'logout', child: Row(children: [Icon(Icons.logout, size: 18, color: Colors.red), SizedBox(width: 8), Text('Logout', style: TextStyle(color: Colors.red))])),
           ],
         ),
-        const SizedBox(width: 16),
       ],
     );
   }
@@ -1694,12 +1496,10 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
           _drawerItem(Icons.dashboard_outlined, 'Overview', 0),
           _drawerItem(Icons.people_outline, 'Students', 1),
           _drawerItem(Icons.upload_file_outlined, 'Lesson Plans', 2),
-          _drawerItem(Icons.description_outlined, 'Worksheets', 3),
-          _drawerItem(Icons.assignment_outlined, 'Assignments', 4),
-          _drawerItem(Icons.grade_outlined, 'Grades', 5),
-          _drawerItem(Icons.calendar_today_outlined, 'Attendance', 6),
-          _drawerItem(Icons.announcement_outlined, 'Announcements', 7),
-          _drawerItem(Icons.quiz_outlined, 'Quizzes', 8),
+          _drawerItem(Icons.assignment_outlined, 'Assignments', 3),
+          _drawerItem(Icons.calendar_today_outlined, 'Attendance', 4),
+          _drawerItem(Icons.announcement_outlined, 'Announcements', 5),
+          _drawerItem(Icons.quiz_outlined, 'Quizzes', 6),
           const Spacer(),
           const Divider(),
           ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Logout', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)), onTap: _logout),
@@ -1713,7 +1513,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
     return ListTile(
       leading: Icon(icon, color: isSelected ? const Color(0xFF0d2b5c) : Colors.grey.shade600),
       title: Text(label, style: TextStyle(color: isSelected ? const Color(0xFF0d2b5c) : Colors.grey.shade700, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500)),
-      tileColor: isSelected ? const Color(0xFF0d2b5c).withOpacity(0.08) : null,
+      tileColor: isSelected ? const Color(0xFF0d2b5c).withValues(alpha: 0.08) : null,
       onTap: () { setState(() => _selectedIndex = index); Navigator.pop(context); },
     );
   }
@@ -1730,12 +1530,10 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
           _sidebarItem(Icons.dashboard_outlined, 'Overview', 0),
           _sidebarItem(Icons.people_outline, 'Students', 1),
           _sidebarItem(Icons.upload_file_outlined, 'Lesson Plans', 2),
-          _sidebarItem(Icons.description_outlined, 'Worksheets', 3),
-          _sidebarItem(Icons.assignment_outlined, 'Assignments', 4),
-          _sidebarItem(Icons.grade_outlined, 'Grades', 5),
-          _sidebarItem(Icons.calendar_today_outlined, 'Attendance', 6),
-          _sidebarItem(Icons.announcement_outlined, 'Announcements', 7),
-          _sidebarItem(Icons.quiz_outlined, 'Quizzes', 8),
+          _sidebarItem(Icons.assignment_outlined, 'Assignments', 3),
+          _sidebarItem(Icons.calendar_today_outlined, 'Attendance', 4),
+          _sidebarItem(Icons.announcement_outlined, 'Announcements', 5),
+          _sidebarItem(Icons.quiz_outlined, 'Quizzes', 6),
           const Spacer(),
           const Divider(),
           ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Logout', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)), onTap: _logout),
@@ -1750,7 +1548,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
     return ListTile(
       leading: Icon(icon, color: isSelected ? const Color(0xFF0d2b5c) : Colors.grey.shade600),
       title: Text(label, style: TextStyle(color: isSelected ? const Color(0xFF0d2b5c) : Colors.grey.shade700, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500)),
-      tileColor: isSelected ? const Color(0xFF0d2b5c).withOpacity(0.08) : null,
+      tileColor: isSelected ? const Color(0xFF0d2b5c).withValues(alpha: 0.08) : null,
       onTap: () => setState(() => _selectedIndex = index),
     );
   }
@@ -1760,19 +1558,16 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
       case 0: return _buildOverview();
       case 1: return _buildStudentList();
       case 2: return _buildLessonPlans();
-      case 3: return _buildWorksheets();
-      case 4: return _buildAssignments();
-      case 5: return _buildGrades();
-      case 6: return _buildAttendance();
-      case 7: return _buildAnnouncements();
-      case 8: return _buildQuizzes();
+      case 3: return _buildAssignments();
+      case 4: return _buildAttendance();
+      case 5: return _buildAnnouncements();
+      case 6: return _buildQuizzes();
       default: return _buildOverview();
     }
   }
 
-  // ==================== UI SECTIONS (LAHAT NG ORIGINAL, WALANG BINURA) ====================
+  // ==================== OVERVIEW ====================
   Widget _buildOverview() {
-    final pendingSubmissions = _getPendingSubmissionsCount();
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
       child: Column(
@@ -1783,8 +1578,8 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
             decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF0d2b5c), Color(0xFF1a5276)]), borderRadius: BorderRadius.circular(12)),
             child: Row(
               children: [
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Welcome, ${_authService.currentUserName ?? 'Teacher'}!', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)), const SizedBox(height: 8), Text('Manage your classes and track student progress.', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14))])),
-                Container(width: 60, height: 60, decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle), child: const Icon(Icons.person, color: Colors.white, size: 30)),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Welcome, ${_authService.currentUserName ?? 'Teacher'}!', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)), const SizedBox(height: 8), Text('Manage your classes and track student progress.', style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 14))])),
+                Container(width: 60, height: 60, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: const Icon(Icons.person, color: Colors.white, size: 30)),
               ],
             ),
           ),
@@ -1799,9 +1594,9 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
               mainAxisSpacing: 12,
               childAspectRatio: 1.3,
               children: [
-                _statCard('Total Students', '${_students.length}', 'Grade 10-A', Colors.blue, Icons.people),
-                _statCard('Assignments', '${_assignments.length}', 'Total', Colors.green, Icons.assignment),
-                _statCard('Pending Review', '$pendingSubmissions', 'Submissions', Colors.orange, Icons.assignment_turned_in),
+                _statCard('Total Students', '${_students.length}', 'Enrolled', Colors.blue, Icons.people),
+                _statCard('Assignments', '${_assignments.length}', 'Created', Colors.green, Icons.assignment),
+                _statCard('Pending Review', '${_getPendingSubmissionsCount()}', 'Submissions', Colors.orange, Icons.assignment_turned_in),
                 _statCard('Lesson Plans', '${_materials.length}', 'Uploaded', const Color(0xFF0d2b5c), Icons.book),
               ],
             );
@@ -1822,7 +1617,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Icon(icon, color: color, size: 20)), const Spacer(), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: Text(subtitle, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)))]),
+          Row(children: [Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Icon(icon, color: color, size: 20)), const Spacer(), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)), child: Text(subtitle, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)))]),
           const Spacer(),
           Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
           const SizedBox(height: 4),
@@ -1873,9 +1668,9 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
           const SizedBox(height: 12),
           _activityItem('Pending Submissions', '${_getPendingSubmissionsCount()} to review', 'Now', Colors.orange),
           const Divider(),
-          _activityItem('Uploaded Lesson Plan', 'Science - Cell Biology', '5 hours ago', Colors.green),
+          _activityItem('Uploaded Lesson Plan', _materials.isNotEmpty ? _materials.first['title'] : 'None', 'Recently', Colors.green),
           const Divider(),
-          _activityItem('Generated Worksheet', 'English - Grammar', 'Yesterday', Colors.blue),
+          _activityItem('Created Assignment', _assignments.isNotEmpty ? _assignments.first['title'] : 'None', 'Recently', Colors.blue),
         ],
       ),
     );
@@ -1898,21 +1693,14 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
   Widget _buildAttendanceSummary() {
     final todayKey = "${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}";
     Map<String, String> todayStatuses = {};
-    
-    final todayRecord = _attendanceRecords.firstWhere(
-      (r) => r['date'] == todayKey,
-      orElse: () => {},
-    );
-    
+    final todayRecord = _attendanceRecords.firstWhere((r) => r['date'] == todayKey, orElse: () => {});
     if (todayRecord.isNotEmpty) {
       todayStatuses = Map<String, String>.from(todayRecord['statuses'] ?? {});
     }
-    
     int present = todayStatuses.values.where((s) => s == 'Present').length;
     int late = todayStatuses.values.where((s) => s == 'Late').length;
     int absent = todayStatuses.values.where((s) => s == 'Absent').length;
     int total = present + late + absent;
-    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE2E8F0))),
@@ -1928,7 +1716,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
           else
             Text('No attendance marked yet', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
           const SizedBox(height: 16),
-          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => setState(() => _selectedIndex = 6), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)), elevation: 0), child: const Text('Take Attendance', style: TextStyle(fontSize: 13)))),
+          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => setState(() => _selectedIndex = 5), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)), elevation: 0), child: const Text('Take Attendance', style: TextStyle(fontSize: 13)))),
         ],
       ),
     );
@@ -1945,9 +1733,9 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Announcements', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))), TextButton(onPressed: () => setState(() => _selectedIndex = 7), child: const Text('Manage', style: TextStyle(color: Color(0xFF007bff), fontSize: 12)))]),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Announcements', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))), TextButton(onPressed: () => setState(() => _selectedIndex = 6), child: const Text('Manage', style: TextStyle(color: Color(0xFF007bff), fontSize: 12)))]),
           const SizedBox(height: 12),
-          ..._announcements.take(3).map((a) => _announcementPreviewItem(a['title'], a['date'], a['isNew'] == true)),
+          ..._announcements.take(3).map((a) => _announcementPreviewItem(a['title'], a['created_at']?.toString().split(' ')[0] ?? 'Recently', false)),
         ],
       ),
     );
@@ -1966,55 +1754,99 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
     );
   }
 
+  // ==================== STUDENT LIST ====================
   Widget _buildStudentList() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Student List', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))), ElevatedButton.icon(onPressed: _showAddStudentDialog, icon: const Icon(Icons.add, size: 18), label: const Text('Add Student'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)), elevation: 0))]),
+          const Text('Student List', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
           const SizedBox(height: 16),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE2E8F0))), child: Row(children: [Icon(Icons.search, color: Colors.grey.shade400, size: 20), const SizedBox(width: 12), Expanded(child: TextField(decoration: InputDecoration(hintText: 'Search students...', hintStyle: TextStyle(color: Colors.grey.shade400), border: InputBorder.none, contentPadding: EdgeInsets.zero)))])),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE2E8F0))), child: Row(children: [Icon(Icons.search, color: Colors.grey.shade400, size: 20), const SizedBox(width: 12), const Expanded(child: TextField(decoration: InputDecoration(hintText: 'Search students...', border: InputBorder.none)))])),
           const SizedBox(height: 16),
-          Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE2E8F0))), child: Column(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14), decoration: const BoxDecoration(color: Color(0xFFF8F9FA), borderRadius: BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8))), child: Row(children: [Expanded(flex: 2, child: Text('Student Name', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.grey.shade700, fontSize: 12))), Expanded(child: Text('ID', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.grey.shade700, fontSize: 12))), if (!_isMobile) Expanded(child: Text('Attendance', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.grey.shade700, fontSize: 12))), Expanded(child: Text('Average', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.grey.shade700, fontSize: 12))), const SizedBox(width: 60)])), ...List.generate(_students.length, (index) => _studentRow(index))])),
+          Container(
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE2E8F0))),
+            child: _students.isEmpty
+                ? const Padding(padding: EdgeInsets.all(40), child: Center(child: Text('No students found')))
+                : Column(children: [
+                    Container(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14), decoration: const BoxDecoration(color: Color(0xFFF8F9FA), borderRadius: BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8))), child: Row(children: [Expanded(flex: 2, child: Text('Student Name', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.grey.shade700))), Expanded(child: Text('Email', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.grey.shade700)))])),
+                    ..._students.map((student) => _studentRow(student)),
+                  ]),
+          ),
         ],
       ),
     );
   }
 
-  Widget _studentRow(int index) {
-    final student = _students[index];
-    final avg = int.parse(student['avg']!.replaceAll('%', ''));
-    final color = avg >= 90 ? Colors.green : avg >= 80 ? Colors.blue : avg >= 75 ? Colors.orange : Colors.red;
+  Widget _studentRow(Map<String, dynamic> student) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFFE2E8F0)))),
       child: Row(
         children: [
-          Expanded(flex: 2, child: Row(children: [CircleAvatar(radius: 16, backgroundColor: const Color(0xFF0d2b5c).withOpacity(0.1), child: Text(student['name']![0], style: const TextStyle(color: Color(0xFF0d2b5c), fontWeight: FontWeight.w700, fontSize: 12))), const SizedBox(width: 12), Text(student['name']!, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF1a2b4a)))])),
-          Expanded(child: Text(student['id']!, style: TextStyle(color: Colors.grey.shade600, fontSize: 13))),
-          if (!_isMobile) Expanded(child: Text(student['attendance']!, style: TextStyle(color: Colors.grey.shade600, fontSize: 13))),
-          Expanded(child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: Text(student['avg']!, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 13)))),
-          SizedBox(width: 60, child: IconButton(icon: const Icon(Icons.delete, size: 18, color: Colors.red), onPressed: () => _deleteStudent(index))),
+          Expanded(flex: 2, child: Row(children: [CircleAvatar(radius: 16, backgroundColor: const Color(0xFF0d2b5c).withValues(alpha: 0.1), child: Text(student['name'][0], style: const TextStyle(color: Color(0xFF0d2b5c), fontWeight: FontWeight.w700, fontSize: 12))), const SizedBox(width: 12), Text(student['name'], style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF1a2b4a)))])),
+          Expanded(child: Text(student['email'] ?? '', style: TextStyle(color: Colors.grey.shade600, fontSize: 13))),
         ],
       ),
     );
   }
 
-  Widget _buildAssignments() {
-    final pendingCount = _getPendingSubmissionsCount();
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(_isMobile ? 16 : 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Assignments', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))), const SizedBox(height: 4), Text('Create and manage assignments for students', style: TextStyle(color: Colors.grey.shade600, fontSize: 14))]), Row(children: [ElevatedButton.icon(onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const TeacherReviewPage())).then((_) => _loadData()); }, icon: const Icon(Icons.assignment_turned_in, size: 18), label: pendingCount > 0 ? Text('Review ($pendingCount)') : const Text('View Submissions'), style: ElevatedButton.styleFrom(backgroundColor: pendingCount > 0 ? Colors.orange : const Color(0xFF0d2b5c), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)))), const SizedBox(width: 12), ElevatedButton.icon(onPressed: _showCreateAssignmentDialog, icon: const Icon(Icons.add, size: 18), label: const Text('Create Assignment'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)), elevation: 0))])]),
-          const SizedBox(height: 24),
-          ..._assignments.map((assignment) => _assignmentCard(assignment)),
-        ],
-      ),
-    );
-  }
+  // ==================== ASSIGNMENTS ====================
+Widget _buildAssignments() {
+  final pendingCount = _getPendingSubmissionsCount();
+  return SingleChildScrollView(
+    padding: EdgeInsets.all(_isMobile ? 16 : 24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Assignments', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text('Create and manage assignments for students', style: TextStyle(color: Colors.grey.shade600)),
+          ]),
+          Row(children: [
+            // ✅ Changed to OutlinedButton – matches Attendance "History" button
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const TeacherReviewPage()))
+                    .then((_) => _loadSubmissions());
+              },
+              icon: const Icon(Icons.assignment_turned_in, size: 18),
+              label: pendingCount > 0 ? Text('Review ($pendingCount)') : const Text('View Submissions'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF0d2b5c),
+                side: const BorderSide(color: Color(0xFF0d2b5c)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // ✅ Solid button – same as Attendance "Create Record"
+            ElevatedButton.icon(
+              onPressed: _showCreateAssignmentDialog,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Create Assignment'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0d2b5c),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+            ),
+          ]),
+        ]),
+        const SizedBox(height: 24),
+        if (_assignments.isEmpty)
+          const Center(child: Padding(padding: EdgeInsets.all(40), child: Text('No assignments created yet')))
+        else
+          for (var a in _assignments) _assignmentCard(a),
+      ],
+    ),
+  );
+}
 
   Widget _assignmentCard(Map<String, dynamic> assignment) {
     final String id = assignment['id']?.toString() ?? '';
@@ -2022,8 +1854,8 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
     final String subject = assignment['subject'] ?? 'No Subject';
     final String description = assignment['description'] ?? 'No description';
     final String deadline = assignment['deadline'] ?? 'No deadline';
-    final submissionCount = _submissions.where((s) => s['assignment_id'] == id).length;
-    final pendingForThis = _submissions.where((s) => s['assignment_id'] == id && s['status'] == 'Pending').length;
+    final submissionCount = _submissions.where((s) => s['assignment_id'].toString() == id).length;
+    final pendingForThis = _submissions.where((s) => s['assignment_id'].toString() == id && s['status'] == 'Pending').length;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
@@ -2031,33 +1863,37 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))), const SizedBox(height: 4), Text(subject, style: const TextStyle(color: Colors.blue, fontSize: 13, fontWeight: FontWeight.w600))])), Row(children: [if (submissionCount > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: pendingForThis > 0 ? Colors.orange.withOpacity(0.1) : Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: Text('$submissionCount submission${submissionCount != 1 ? 's' : ''}', style: TextStyle(color: pendingForThis > 0 ? Colors.orange : Colors.green, fontSize: 11, fontWeight: FontWeight.w700))), const SizedBox(width: 12), Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: const Text('Active', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w700)))])]),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))), const SizedBox(height: 4), Text(subject, style: const TextStyle(color: Colors.blue, fontSize: 13, fontWeight: FontWeight.w600))])),
+            Row(children: [
+              if (submissionCount > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: pendingForThis > 0 ? Colors.orange.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)), child: Text('$submissionCount submission${submissionCount != 1 ? 's' : ''}', style: TextStyle(color: pendingForThis > 0 ? Colors.orange : Colors.green, fontSize: 11, fontWeight: FontWeight.w700))),
+              const SizedBox(width: 12),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)), child: const Text('Active', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w700))),
+            ]),
+          ]),
           const SizedBox(height: 12),
           Text(description, style: TextStyle(color: Colors.grey.shade600, fontSize: 14, height: 1.5)),
           const SizedBox(height: 12),
           Row(children: [const Icon(Icons.calendar_today, size: 16, color: Colors.orange), const SizedBox(width: 8), Text('Deadline: $deadline', style: const TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.w600))]),
           const SizedBox(height: 16),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [OutlinedButton.icon(onPressed: () => _deleteAssignment(id), icon: const Icon(Icons.delete, size: 16), label: const Text('Delete'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))))]),
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [OutlinedButton.icon(onPressed: () => _deleteAssignmentById(int.parse(id)), icon: const Icon(Icons.delete, size: 16), label: const Text('Delete'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))))]),
         ],
       ),
     );
   }
 
+  // ==================== LESSON PLANS ====================
   Widget _buildLessonPlans() {
     String searchQuery = '';
     String selectedSubject = 'All';
-    List<String> subjects = ['All', 'Mathematics', 'Science', 'Filipino', 'English', 'History', 'MAPEH'];
-    
+    List<String> subjects = ['All', 'AP', 'ESP', 'TLE', 'Mathematics', 'Science', 'Filipino', 'English', 'MAPEH'];
     List<Map<String, dynamic>> getFilteredMaterials() {
       return _materials.where((material) {
-        bool matchesSearch = searchQuery.isEmpty ||
-            material['title'].toLowerCase().contains(searchQuery.toLowerCase()) ||
-            material['subject'].toLowerCase().contains(searchQuery.toLowerCase());
+        bool matchesSearch = searchQuery.isEmpty || material['title'].toLowerCase().contains(searchQuery.toLowerCase()) || material['subject'].toLowerCase().contains(searchQuery.toLowerCase());
         bool matchesSubject = selectedSubject == 'All' || material['subject'] == selectedSubject;
         return matchesSearch && matchesSubject;
       }).toList();
     }
-    
     return StatefulBuilder(
       builder: (context, setState) {
         return SingleChildScrollView(
@@ -2073,39 +1909,21 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                       height: 48,
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE2E8F0))),
                       child: TextField(
-                        onChanged: (value) { setState(() { searchQuery = value; }); },
-                        decoration: InputDecoration(
-                          hintText: 'Search lesson plans...',
-                          hintStyle: TextStyle(color: Colors.grey.shade400),
-                          prefixIcon: Icon(Icons.search, color: Colors.grey.shade400, size: 20),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
+                        onChanged: (value) => setState(() => searchQuery = value),
+                        decoration: InputDecoration(hintText: 'Search lesson plans...', hintStyle: TextStyle(color: Colors.grey.shade400), prefixIcon: Icon(Icons.search, color: Colors.grey.shade400, size: 20), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 12)),
                       ),
                     ),
                   ),
                   const SizedBox(width: 16),
                   ElevatedButton.icon(
                     onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const UploadMaterialPage()),
-                      ).then((uploadedMaterial) {
-                        if (uploadedMaterial is UploadedMaterial) {
-                          _addUploadedMaterial(uploadedMaterial);
-                          setState(() {});
-                        }
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const UploadMaterialPage())).then((uploadedMaterial) {
+                        if (uploadedMaterial is UploadedMaterial) _addUploadedMaterial(uploadedMaterial);
                       });
                     },
                     icon: const Icon(Icons.upload_file, size: 18),
                     label: const Text('Upload File'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0d2b5c),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                      elevation: 0,
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)), elevation: 0),
                   ),
                 ],
               ),
@@ -2121,7 +1939,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                       child: FilterChip(
                         label: Text(subject),
                         selected: isSelected,
-                        onSelected: (selected) { setState(() { selectedSubject = subject; }); },
+                        onSelected: (_) => setState(() => selectedSubject = subject),
                         backgroundColor: Colors.white,
                         selectedColor: const Color(0xFF0d2b5c),
                         checkmarkColor: Colors.white,
@@ -2136,7 +1954,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
               Text('${getFilteredMaterials().length} materials found', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
               const SizedBox(height: 16),
               getFilteredMaterials().isEmpty
-                  ? Center(child: Padding(padding: const EdgeInsets.symmetric(vertical: 60), child: Column(children: [Icon(Icons.folder_open, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('No materials found', style: TextStyle(color: Colors.grey.shade500, fontSize: 16))])))
+                  ? const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 60), child: Column(children: [Icon(Icons.folder_open, size: 64, color: Colors.grey), SizedBox(height: 16), Text('No materials found')])))
                   : Wrap(spacing: 16, runSpacing: 16, children: getFilteredMaterials().map((material) => _lessonPlanCard(material)).toList()),
             ],
           ),
@@ -2149,142 +1967,64 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
     final String id = material['id']?.toString() ?? '';
     final String title = material['title'] ?? 'Untitled';
     final String subject = material['subject'] ?? 'No Subject';
-    final String grade = material['grade'] ?? 'Grade 10';
-    final String date = material['date'] ?? DateTime.now().toString().split(' ')[0];
-    final String format = material['format'] ?? 'PDF';
-    final String filePath = material['filePath'] ?? '';
-    
-    Color getFormatColor(String format) {
-      switch (format.toUpperCase()) {
+    final String format = material['type'] ?? 'PDF';
+    final String filePath = material['file_url'] ?? '';
+    final String displayDate = _getDisplayDate(material);
+
+    Color getFormatColor(String f) {
+      switch (f.toUpperCase()) {
         case 'PDF': return Colors.red;
         case 'DOCX': return Colors.blue;
         case 'PPTX': return Colors.orange;
         default: return Colors.grey;
       }
     }
-    
+
     return Container(
       width: _isMobile ? double.infinity : 320,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: getFormatColor(format).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(format.toUpperCase(), style: TextStyle(color: getFormatColor(format), fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
-              const Spacer(),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, size: 20, color: Color(0xFF64748B)),
-                onSelected: (value) {
-                  if (value == 'edit') {
-                    _showEditMaterialDialog(id, title, subject, format);
-                  } else if (value == 'delete') {
-                    _deleteMaterial(id);
-                  } else if (value == 'download') {
-                    _downloadMaterial(id, title);
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text('Edit')])),
-                  const PopupMenuItem(value: 'download', child: Row(children: [Icon(Icons.download, size: 18), SizedBox(width: 8), Text('Download')])),
-                  const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, size: 18, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))])),
-                ],
-              ),
-            ],
-          ),
+          Row(children: [
+            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: getFormatColor(format).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), child: Text(format.toUpperCase(), style: TextStyle(color: getFormatColor(format), fontSize: 11, fontWeight: FontWeight.bold))),
+            const Spacer(),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'edit') {
+                  _showEditMaterialDialog(id, title, subject, format);
+                } else if (value == 'delete') {
+                  _deleteMaterial(id);
+                } else if (value == 'download') {
+                  _downloadMaterial(id, title);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text('Edit')])),
+                const PopupMenuItem(value: 'download', child: Row(children: [Icon(Icons.download, size: 18), SizedBox(width: 8), Text('Download')])),
+                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, size: 18, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))])),
+              ],
+            ),
+          ]),
           const SizedBox(height: 12),
           Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1a2b4a))),
           const SizedBox(height: 6),
           Text(subject, style: TextStyle(color: getFormatColor(format), fontSize: 13, fontWeight: FontWeight.w600)),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(Icons.calendar_today, size: 14, color: Colors.grey.shade500),
-              const SizedBox(width: 6),
-              Text(date, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
-              const SizedBox(width: 16),
-              Icon(Icons.grade, size: 14, color: Colors.grey.shade500),
-              const SizedBox(width: 6),
-              Text(grade, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
-            ],
-          ),
+          Row(children: [Icon(Icons.calendar_today, size: 14, color: Colors.grey.shade500), const SizedBox(width: 6), Text(displayDate, style: TextStyle(color: Colors.grey.shade500, fontSize: 12))]),
           const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _showMaterialDetails(title, subject, date, id),
-                  icon: const Icon(Icons.visibility, size: 16),
-                  label: const Text('View', style: TextStyle(fontSize: 13)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF0d2b5c),
-                    side: const BorderSide(color: Color(0xFF0d2b5c)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _downloadMaterial(id, title),
-                  icon: const Icon(Icons.download, size: 16),
-                  label: const Text('Download', style: TextStyle(fontSize: 13)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey.shade700,
-                    side: BorderSide(color: Colors.grey.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ),
-            ],
-          ),
+          Row(children: [
+            Expanded(child: OutlinedButton.icon(onPressed: () => _showMaterialDetails(title, subject, displayDate, id), icon: const Icon(Icons.visibility, size: 16), label: const Text('View', style: TextStyle(fontSize: 13)), style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFF0d2b5c), side: const BorderSide(color: Color(0xFF0d2b5c)), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))))),
+            const SizedBox(width: 10),
+            Expanded(child: OutlinedButton.icon(onPressed: () => _downloadMaterial(id, title), icon: const Icon(Icons.download, size: 16), label: const Text('Download', style: TextStyle(fontSize: 13)), style: OutlinedButton.styleFrom(foregroundColor: Colors.grey.shade700, side: BorderSide(color: Colors.grey.shade300), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))))),
+          ]),
         ],
       ),
     );
   }
 
-  Widget _buildWorksheets() {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(_isMobile ? 16 : 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Worksheets', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
-          const SizedBox(height: 24),
-          Container(padding: const EdgeInsets.all(40), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)), child: const Center(child: Text('Worksheets feature coming soon...', style: TextStyle(color: Colors.grey)))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGrades() {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(_isMobile ? 16 : 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Grades', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
-          const SizedBox(height: 24),
-          Container(padding: const EdgeInsets.all(40), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)), child: const Center(child: Text('Grades feature coming soon...', style: TextStyle(color: Colors.grey)))),
-        ],
-      ),
-    );
-  }
-
+  // ==================== ATTENDANCE UI ====================
   Widget _buildAttendance() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
@@ -2297,26 +2037,9 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
               const Text('Attendance Management', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
               Row(
                 children: [
-                  ElevatedButton.icon(
-                    onPressed: _createAttendanceRecord,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Create Record'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0d2b5c),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                    ),
-                  ),
+                  ElevatedButton.icon(onPressed: _createAttendanceRecord, icon: const Icon(Icons.add, size: 18), label: const Text('Create Record'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)))),
                   const SizedBox(width: 12),
-                  OutlinedButton.icon(
-                    onPressed: _viewAttendanceHistory,
-                    icon: const Icon(Icons.history, size: 18),
-                    label: const Text('History'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF0d2b5c),
-                      side: const BorderSide(color: Color(0xFF0d2b5c)),
-                    ),
-                  ),
+                  OutlinedButton.icon(onPressed: _viewAttendanceHistory, icon: const Icon(Icons.history, size: 18), label: const Text('History'), style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFF0d2b5c), side: const BorderSide(color: Color(0xFF0d2b5c)))),
                 ],
               ),
             ],
@@ -2373,31 +2096,17 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                           leading: const Icon(Icons.calendar_today, color: Color(0xFF0d2b5c)),
                           title: Text(date, style: const TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: Text('P: $present  L: $late  A: $absent'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.edit, color: Color(0xFF0d2b5c)),
-                            onPressed: () => _markAttendanceForDate(record['date']),
-                          ),
+                          trailing: IconButton(icon: const Icon(Icons.edit, color: Color(0xFF0d2b5c)), onPressed: () => _markAttendanceForDate(record['date'])),
                         );
                       },
                     ),
-                  if (_attendanceRecords.length > 3)
-                    TextButton(onPressed: _viewAttendanceHistory, child: const Text('View all records →')),
+                  if (_attendanceRecords.length > 3) TextButton(onPressed: _viewAttendanceHistory, child: const Text('View all records →')),
                   const SizedBox(height: 24),
                   const Divider(),
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _generateAttendanceSummary,
-                      icon: const Icon(Icons.summarize),
-                      label: const Text('Generate Attendance Summary'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0d2b5c),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
+                    child: ElevatedButton.icon(onPressed: _generateAttendanceSummary, icon: const Icon(Icons.summarize), label: const Text('Generate Attendance Summary'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)))),
                   ),
                 ],
               ),
@@ -2408,6 +2117,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
     );
   }
 
+  // ==================== ANNOUNCEMENTS ====================
   Widget _buildAnnouncements() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
@@ -2415,18 +2125,19 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Text('Announcements', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
+            const Text('Announcements', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             ElevatedButton.icon(
               onPressed: _showAddAnnouncementDialog,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('New Announcement'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0d2b5c),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                elevation: 0,
+               icon: const Icon(Icons.add, size: 18),
+                label: const Text('Create Assignment'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0d2b5c),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
               ),
-            )
           ]),
           const SizedBox(height: 24),
           if (_announcements.isEmpty)
@@ -2436,74 +2147,60 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
               child: const Center(child: Text('No announcements yet. Create one to get started!', style: TextStyle(color: Colors.grey))),
             )
           else
-            ...List.generate(_announcements.length, (index) => _teacherAnnouncementCard(index)),
+            for (var announcement in _announcements) _teacherAnnouncementCard(announcement),
         ],
       ),
     );
   }
 
-  Widget _teacherAnnouncementCard(int index) {
-    final announcement = _announcements[index];
-    final colorMap = {
-      'blue': Colors.blue,
-      'green': Colors.green,
-      'orange': Colors.orange,
-    };
-    final color = colorMap[announcement['color']] ?? Colors.blue;
+  Widget _teacherAnnouncementCard(Map<String, dynamic> announcement) {
+    final id = announcement['id'];
+    final title = announcement['title'];
+    final content = announcement['content'];
+    final date = announcement['created_at']?.toString().split(' ')[0] ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE2E8F0))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: Icon(Icons.announcement, color: color, size: 20),
-              ),
+              Container(width: 40, height: 40, decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.announcement, color: Colors.blue, size: 20)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(announcement['title'], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Color(0xFF1a2b4a))),
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Color(0xFF1a2b4a))),
                     const SizedBox(height: 4),
-                    Text(announcement['date'], style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                    Text(date, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
                   ],
                 ),
               ),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert, size: 18, color: Color(0xFF94A3B8)),
                 onSelected: (value) {
-                  if (value == 'edit') {
-                    _showEditAnnouncementDialog(index);
-                  } else if (value == 'delete') {
-                    _deleteAnnouncement(index);
+                  if (value == 'delete') {
+                    _deleteAnnouncementById(id);
                   }
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 18, color: Colors.blue), SizedBox(width: 8), Text('Edit')])),
                   const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, size: 18, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))])),
                 ],
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Text(announcement['content'], style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.5)),
+          Text(content, style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.5)),
         ],
       ),
     );
   }
 
+  // ==================== QUIZZES ====================
   Widget _buildQuizzes() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(_isMobile ? 16 : 24),
@@ -2514,12 +2211,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('My Quizzes', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1a2b4a))),
-              ElevatedButton.icon(
-                onPressed: _createQuiz,
-                icon: const Icon(Icons.add),
-                label: const Text('Create Quiz'),
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white),
-              ),
+              ElevatedButton.icon(onPressed: _createQuiz, icon: const Icon(Icons.add), label: const Text('Create Quiz'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0d2b5c), foregroundColor: Colors.white)),
             ],
           ),
           const SizedBox(height: 24),
@@ -2530,54 +2222,48 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
               child: const Center(child: Text('No quizzes created yet.')),
             )
           else
-            ..._quizzes.map((quiz) => Card(
-              margin: const EdgeInsets.only(bottom: 16),
-              child: ExpansionTile(
-                title: Text(quiz['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('${quiz['questions'].length} questions'),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(quiz['description'] ?? '', style: TextStyle(color: Colors.grey.shade600)),
-                        const SizedBox(height: 12),
-                        ...List.generate(quiz['questions'].length, (idx) {
-                          final q = quiz['questions'][idx];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('${idx+1}. ${q['text']}', style: const TextStyle(fontWeight: FontWeight.w500)),
-                                const SizedBox(height: 4),
-                                if (q['type'] == 'Multiple Choice')
-                                  Column(
-                                    children: List.generate(q['choices'].length, (i) => Text('   ${String.fromCharCode(65+i)}. ${q['choices'][i]}')),
-                                  )
-                                else if (q['type'] == 'Identification')
-                                  Text('Answer: ${q['answer']}', style: TextStyle(color: Colors.green.shade700))
-                                else
-                                  Text('Sample: ${q['sampleAnswer']}', style: TextStyle(color: Colors.blue.shade700)),
-                                const Divider(),
-                              ],
-                            ),
-                          );
-                        }),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            OutlinedButton.icon(
-                              onPressed: () => _editQuizQuestions(quiz),
-                              icon: const Icon(Icons.edit),
-                              label: const Text('Edit Questions'),
-                            ),
-                            const SizedBox(width: 8),
-                            OutlinedButton.icon(
-                              onPressed: () {
-                                showDialog(
+            for (var quiz in _quizzes)
+              Card(
+                margin: const EdgeInsets.only(bottom: 16),
+                child: ExpansionTile(
+                  title: Text(quiz['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text('${quiz['questions'].length} questions'),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(quiz['description'] ?? '', style: TextStyle(color: Colors.grey.shade600)),
+                          const SizedBox(height: 12),
+                          ...List.generate(quiz['questions'].length, (idx) {
+                            final q = quiz['questions'][idx];
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${idx+1}. ${q['text']}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                                  const SizedBox(height: 4),
+                                  if (q['type'] == 'Multiple Choice')
+                                    ...List.generate(q['choices'].length, (i) => Text('   ${String.fromCharCode(65 + i)}. ${q['choices'][i]}')),
+                                  if (q['type'] == 'Identification')
+                                    Text('Answer: ${q['answer']}', style: TextStyle(color: Colors.green.shade700)),
+                                  if (q['type'] == 'Essay')
+                                    Text('Sample: ${q['sampleAnswer']}', style: TextStyle(color: Colors.blue.shade700)),
+                                  const Divider(),
+                                ],
+                              ),
+                            );
+                          }),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              OutlinedButton.icon(onPressed: () => _editQuizQuestions(quiz), icon: const Icon(Icons.edit), label: const Text('Edit Questions')),
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed: () => showDialog(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
                                     title: const Text('Delete Quiz'),
@@ -2586,9 +2272,7 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                                       TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
                                       ElevatedButton(
                                         onPressed: () {
-                                          setState(() {
-                                            _quizzes.removeWhere((q) => q['id'] == quiz['id']);
-                                          });
+                                          setState(() => _quizzes.removeWhere((q) => q['id'] == quiz['id']));
                                           _saveQuizzes();
                                           Navigator.pop(ctx);
                                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quiz deleted')));
@@ -2598,19 +2282,18 @@ Future<void> _addQuestionDialog(Map<String, dynamic> quiz, List<Map<String, dyna
                                       ),
                                     ],
                                   ),
-                                );
-                              },
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              label: const Text('Delete Quiz', style: TextStyle(color: Colors.red)),
-                            ),
-                          ],
-                        ),
-                      ],
+                                ),
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                label: const Text('Delete Quiz', style: TextStyle(color: Colors.red)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            )),
         ],
       ),
     );

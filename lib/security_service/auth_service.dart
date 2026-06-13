@@ -41,6 +41,9 @@ class AuthService {
   String? get currentUserName => _currentUser?['name'];
   String? get currentUserEmail => _currentUser?['email'];
   String? get currentUserRole => _currentUser?['role'];
+  
+  /// Added: returns the current user's database ID (from login response)
+  int? get currentUserId => _currentUser?['id'];
 
   bool get isLockedOut {
     if (_lockoutEndTime == null) return false;
@@ -157,7 +160,7 @@ class AuthService {
           await prefs.remove('user_session');
           await prefs.setBool('remember_me', false);
         }
-        print('✅ Login successful, user: ${_currentUser?['name']}');
+        print('✅ Login successful, user: ${_currentUser?['name']}, id: ${_currentUser?['id']}');
         return {'success': true, 'message': response['message'] ?? 'Login successful'};
       }
 

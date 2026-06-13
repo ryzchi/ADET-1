@@ -225,7 +225,7 @@ class _QuizTakePageState extends State<QuizTakePage> {
         return RadioListTile<String>(
           value: label,
           groupValue: selected,
-          title: Text('${label}. ${choices[i]}'),
+          title: Text('$label. ${choices[i]}'),
           dense: true,
           onChanged: (val) => setState(() => _mcSelections[index] = val ?? ''),
         );

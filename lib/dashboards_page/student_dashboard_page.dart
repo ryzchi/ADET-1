@@ -4,8 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import '/security_service/auth_service.dart';
+import '/services/api_client.dart';
 import '../pages/quiz_take_page.dart';
-import '../pages/quiz_result_page.dart'; 
+import '../pages/quiz_result_page.dart';
 
 class StudentDashboardPage extends StatefulWidget {
   const StudentDashboardPage({super.key});
@@ -16,6 +17,7 @@ class StudentDashboardPage extends StatefulWidget {
 
 class _StudentDashboardPageState extends State<StudentDashboardPage> {
   final _authService = AuthService();
+  final ApiClient _api = ApiClient();
 
   int _selectedIndex = 0;
   bool _isMobile = false;
@@ -54,45 +56,8 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
         _attendanceRecords = List<Map<String, dynamic>>.from(jsonDecode(data));
       });
     } else {
-      final sample = _generateSampleAttendance();
-      setState(() {
-        _attendanceRecords = sample;
-      });
-      await prefs.setString(key, jsonEncode(sample));
+      _attendanceRecords = [];
     }
-  }
-
-  List<Map<String, dynamic>> _generateSampleAttendance() {
-    final List<Map<String, dynamic>> records = [];
-    final now = DateTime.now();
-    final subjects = [
-      'Mathematics',
-      'Science',
-      'English',
-      'History',
-      'PE',
-      'Art',
-    ];
-
-    for (int i = 0; i < 30; i++) {
-      final date = now.subtract(Duration(days: i));
-      final random = DateTime.now().millisecondsSinceEpoch % 100;
-      String status;
-      if (random < 70) {
-        status = 'Present';
-      } else if (random < 85) {
-        status = 'Late';
-      } else {
-        status = 'Absent';
-      }
-
-      records.add({
-        'date': date.toIso8601String().split('T')[0],
-        'status': status,
-        'subject': subjects[i % subjects.length],
-      });
-    }
-    return records;
   }
 
   // ==================== ANNOUNCEMENT METHODS ====================
@@ -101,23 +66,28 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     final studentEmail = _authService.currentUserEmail ?? 'student';
     final readKey = 'read_announcements_${studentEmail.replaceAll('.', '_')}';
 
-    final announcementsJson = prefs.getString('teacher_announcements');
-    if (announcementsJson != null) {
-      final loadedAnnouncements = List<Map<String, dynamic>>.from(
-        jsonDecode(announcementsJson),
-      );
+    try {
+      final response = await _api.get('announcements.php');
+      if (response['success'] == true) {
+        final loadedAnnouncements = List<Map<String, dynamic>>.from(response['announcements'] ?? []);
 
-      final readIdsJson = prefs.getString(readKey);
-      if (readIdsJson != null) {
-        _readAnnouncementIds = Set<int>.from(jsonDecode(readIdsJson) as List);
+        final readIdsJson = prefs.getString(readKey);
+        if (readIdsJson != null) {
+          _readAnnouncementIds = Set<int>.from(jsonDecode(readIdsJson) as List);
+        }
+
+        setState(() {
+          _announcements = loadedAnnouncements;
+          _newAnnouncementCount = _announcements
+              .where((a) => !_readAnnouncementIds.contains(_announcements.indexOf(a)))
+              .length;
+        });
+      } else {
+        _announcements = [];
       }
-
-      setState(() {
-        _announcements = loadedAnnouncements;
-        _newAnnouncementCount = _announcements
-            .where((a) => !_readAnnouncementIds.contains(_announcements.indexOf(a)))
-            .length;
-      });
+    } catch (e) {
+      print('Error loading announcements: $e');
+      _announcements = [];
     }
   }
 
@@ -145,70 +115,32 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     });
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-
-      final assignmentsJson = prefs.getString('student_assignments');
-      if (assignmentsJson != null) {
-        _assignments = List<Map<String, dynamic>>.from(
-          jsonDecode(assignmentsJson),
-        );
+      final assignmentsResponse = await _api.get('assignments.php');
+      if (assignmentsResponse['success'] == true) {
+        _assignments = List<Map<String, dynamic>>.from(assignmentsResponse['assignments'] ?? []);
       } else {
-        _assignments = [
-          {
-            'id': '1',
-            'title': 'Math Homework',
-            'subject': 'Mathematics',
-            'deadline': 'May 30, 2026',
-            'description': 'Complete problems 1-20 on page 42.',
-          },
-          {
-            'id': '2',
-            'title': 'Science Project',
-            'subject': 'Science',
-            'deadline': 'June 2, 2026',
-            'description': 'Build a simple volcano model and write a short report.',
-          },
-          {
-            'id': '3',
-            'title': 'English Essay',
-            'subject': 'English',
-            'deadline': 'June 5, 2026',
-            'description': 'Write a 300-word essay on your favorite book.',
-          },
-          {
-            'id': '4',
-            'title': 'History Timeline',
-            'subject': 'History',
-            'deadline': 'June 8, 2026',
-            'description': 'Create a timeline of World War II events.',
-          },
-        ];
-        await _saveAssignments();
+        _assignments = [];
       }
 
+      final prefs = await SharedPreferences.getInstance();
       final studentEmail = _authService.currentUserEmail ?? 'student';
       final submissionsKey = 'submissions_${studentEmail.replaceAll('.', '_')}';
       final submissionsJson = prefs.getString(submissionsKey);
 
       if (submissionsJson != null) {
-        _submissions = List<Map<String, dynamic>>.from(
-          jsonDecode(submissionsJson),
-        );
+        _submissions = List<Map<String, dynamic>>.from(jsonDecode(submissionsJson));
       } else {
         _submissions = [];
       }
     } catch (e) {
-      debugPrint('Error loading data: $e');
+      print('Error loading data: $e');
+      _assignments = [];
+      _submissions = [];
     } finally {
       setState(() {
         _isLoadingAssignments = false;
       });
     }
-  }
-
-  Future<void> _saveAssignments() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('student_assignments', jsonEncode(_assignments));
   }
 
   bool _isAssignmentSubmitted(String assignmentId) {
@@ -759,13 +691,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                     Colors.blue,
                     Icons.calendar_today,
                   ),
-                  _statCard(
-                    'Grade Average',
-                    '87%',
-                    'B+',
-                    const Color(0xFF0d2b5c),
-                    Icons.grade,
-                  ),
+                  // Grade Average removed
                 ],
               );
             },
@@ -920,6 +846,8 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           const SizedBox(height: 12),
           ...recentAssignments.map((assignment) {
             final isSubmitted = _isAssignmentSubmitted(assignment['id']);
+            final title = assignment['title'] ?? 'Untitled';
+            final subject = assignment['subject'] ?? 'No Subject';
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
@@ -929,7 +857,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          assignment['title'],
+                          title,
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
@@ -938,7 +866,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          assignment['subject'],
+                          subject,
                           style: TextStyle(
                             color: isSubmitted ? Colors.green : Colors.orange,
                             fontSize: 11,
@@ -1204,6 +1132,12 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               final announcement = previewAnnouncements[idx];
               final index = _announcements.indexOf(announcement);
               final isNew = !_readAnnouncementIds.contains(index);
+              final title = announcement['title'] ?? 'Announcement';
+              final content = announcement['content'] ?? '';
+              final date = announcement['date'] ?? 'Recently';
+              // Use the color stored in the announcement
+              final colorValue = announcement['color'] ?? 'blue';
+              Color color = colorValue == 'blue' ? Colors.blue : (colorValue == 'green' ? Colors.green : Colors.orange);
               return Column(
                 children: [
                   GestureDetector(
@@ -1212,10 +1146,11 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                       setState(() => _selectedIndex = 4);
                     },
                     child: _announcementItem(
-                      announcement['title'] ?? 'Announcement',
-                      announcement['content'] ?? '',
-                      announcement['date'] ?? 'Recently',
+                      title,
+                      content,
+                      date,
                       isNew,
+                      color,
                     ),
                   ),
                   if (idx < previewAnnouncements.length - 1) const Divider(),
@@ -1232,6 +1167,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     String content,
     String date,
     bool isNew,
+    Color color,
   ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1272,7 +1208,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                 const SizedBox(height: 4),
                 Text(
                   date,
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 11),
+                  style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -1353,18 +1289,22 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                 final isSubmitted = _isAssignmentSubmitted(assignment['id']);
                 final submission = _getSubmission(assignment['id']);
                 final submissionStatus = submission?['status'];
+                final title = assignment['title'] ?? 'Untitled';
+                final subject = assignment['subject'] ?? 'No Subject';
+                final deadline = assignment['deadline'] ?? 'No deadline';
+                final description = assignment['description'] ?? 'No description';
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: _assignmentCard(
-                    assignment['title'] ?? 'Untitled',
-                    assignment['subject'] ?? 'No Subject',
-                    assignment['deadline'] ?? 'No deadline',
-                    assignment['description'] ?? '',
+                    title,
+                    subject,
+                    deadline,
+                    description,
                     isSubmitted: isSubmitted,
                     submissionStatus: submissionStatus,
                     assignmentId: assignment['id'].toString(),
-                    assignmentTitle: assignment['title'].toString(),
+                    assignmentTitle: title,
                   ),
                 );
               },
@@ -1560,7 +1500,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
-  // ==================== QUIZZES PAGE (UPDATED TO SHOW RAW SCORE) ====================
+  // ==================== QUIZZES PAGE ====================
   Widget _buildQuizzes() {
     final completedQuizIds = _quizAttempts.map((a) => a['quiz_id']?.toString()).whereType<String>().toSet();
     final available = _quizzes;
@@ -1605,7 +1545,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                   quizId: quiz['id']?.toString() ?? '',
                 ),
               );
-            }).toList(),
+            }),
           const SizedBox(height: 28),
           const Text(
             'Completed Quizzes',
@@ -1633,7 +1573,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                   quizId: quiz['id']?.toString() ?? '',
                 ),
               );
-            }).toList(),
+            }),
         ],
       ),
     );
@@ -1725,7 +1665,6 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               ElevatedButton(
                 onPressed: isCompleted
                     ? () {
-                        // Open result page
                         final quizData = _getQuizById(quizId);
                         final attempt = _quizAttempts.firstWhere(
                           (a) => a['quiz_id']?.toString() == quizId,
@@ -1860,6 +1799,9 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                     statusColor = Colors.red;
                     statusIcon = Icons.cancel;
                   }
+                  final subject = record['subject'] ?? 'No Subject';
+                  final date = record['date'] ?? 'No date';
+                  final status = record['status'] ?? 'Absent';
 
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -1870,10 +1812,10 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                     child: ListTile(
                       leading: Icon(statusIcon, color: statusColor, size: 28),
                       title: Text(
-                        record['subject'],
+                        subject,
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      subtitle: Text(record['date']),
+                      subtitle: Text(date),
                       trailing: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
@@ -1881,7 +1823,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          record['status'],
+                          status,
                           style: TextStyle(
                             color: statusColor,
                             fontWeight: FontWeight.bold,
@@ -1967,18 +1909,18 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
           ] else ...[
             ...List.generate(_announcements.length, (index) {
               final announcement = _announcements[index];
-              final color = announcement['color'] == 'blue'
-                  ? Colors.blue
-                  : announcement['color'] == 'green'
-                  ? Colors.green
-                  : Colors.orange;
+              final colorValue = announcement['color'] ?? 'blue';
+              final color = colorValue == 'blue' ? Colors.blue : (colorValue == 'green' ? Colors.green : Colors.orange);
               final isNew = !_readAnnouncementIds.contains(index);
+              final title = announcement['title'] ?? 'Announcement';
+              final content = announcement['content'] ?? '';
+              final date = announcement['date'] ?? 'Recently';
               return Column(
                 children: [
                   _announcementCard(
-                    announcement['title'] ?? 'Announcement',
-                    announcement['content'] ?? '',
-                    announcement['date'] ?? 'Recently',
+                    title,
+                    content,
+                    date,
                     color,
                     isNew,
                     index,
@@ -1992,7 +1934,6 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
       ),
     );
   }
-  
 
   Widget _announcementCard(
     String title,
@@ -2304,6 +2245,29 @@ class _SubmissionStatusPage extends StatelessWidget {
 
   const _SubmissionStatusPage({required this.submissions, required this.assignments});
 
+  String _formatDateTime(String isoString) {
+    try {
+      final dateTime = DateTime.parse(isoString);
+      return '${_monthAbbr(dateTime.month)} ${dateTime.day}, ${dateTime.year} ${_formatTime(dateTime)}';
+    } catch (e) {
+      return isoString;
+    }
+  }
+
+  String _monthAbbr(int month) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[month - 1];
+  }
+
+  String _formatTime(DateTime dt) {
+    int hour = dt.hour;
+    int minute = dt.minute;
+    String period = hour >= 12 ? 'PM' : 'AM';
+    int displayHour = hour % 12;
+    if (displayHour == 0) displayHour = 12;
+    return '$displayHour:${minute.toString().padLeft(2, '0')} $period';
+  }
+
   String _getAssignmentTitle(String assignmentId) {
     try {
       final assignment = assignments.firstWhere((a) => a['id'] == assignmentId);
@@ -2348,6 +2312,14 @@ class _SubmissionStatusPage extends StatelessWidget {
                 final isApproved = submission['status'] == 'Approved';
                 final isPending = submission['status'] == 'Pending';
                 final fileSize = submission['file_size'] ?? 0;
+                final assignmentTitle = _getAssignmentTitle(submission['assignment_id']);
+                final status = submission['status'] ?? 'Pending';
+                final fileName = submission['file_name'] ?? 'No file';
+                final comment = submission['comment'] ?? '';
+                final submittedAtRaw = submission['submitted_at'] ?? DateTime.now().toIso8601String();
+                final submittedAt = _formatDateTime(submittedAtRaw);
+                final feedback = submission['feedback'] ?? '';
+
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   elevation: 2,
@@ -2360,7 +2332,7 @@ class _SubmissionStatusPage extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Expanded(child: Text(_getAssignmentTitle(submission['assignment_id']), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+                            Expanded(child: Text(assignmentTitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
@@ -2368,7 +2340,7 @@ class _SubmissionStatusPage extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
-                                submission['status'],
+                                status,
                                 style: TextStyle(
                                   color: isApproved ? Colors.green : isPending ? Colors.orange : Colors.red,
                                   fontSize: 12,
@@ -2383,7 +2355,7 @@ class _SubmissionStatusPage extends StatelessWidget {
                           children: [
                             Icon(Icons.insert_drive_file, size: 16, color: Colors.grey.shade600),
                             const SizedBox(width: 8),
-                            Expanded(child: Text('File: ${submission['file_name']} (${_formatFileSize(fileSize)})', style: TextStyle(color: Colors.grey.shade600, fontSize: 13))),
+                            Expanded(child: Text('File: $fileName (${_formatFileSize(fileSize)})', style: TextStyle(color: Colors.grey.shade600, fontSize: 13))),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -2391,7 +2363,7 @@ class _SubmissionStatusPage extends StatelessWidget {
                           children: [
                             Icon(Icons.comment, size: 16, color: Colors.grey.shade600),
                             const SizedBox(width: 8),
-                            Expanded(child: Text('Comment: ${submission['comment']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13))),
+                            Expanded(child: Text('Comment: $comment', style: TextStyle(color: Colors.grey.shade600, fontSize: 13))),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -2399,10 +2371,10 @@ class _SubmissionStatusPage extends StatelessWidget {
                           children: [
                             Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
                             const SizedBox(width: 8),
-                            Text('Submitted: ${submission['submitted_at'].toString().split(' ')[0]}', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                            Text('Submitted: $submittedAt', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
                           ],
                         ),
-                        if (submission['feedback'].isNotEmpty) ...[
+                        if (feedback.isNotEmpty) ...[
                           const SizedBox(height: 12),
                           Container(
                             padding: const EdgeInsets.all(12),
@@ -2411,7 +2383,7 @@ class _SubmissionStatusPage extends StatelessWidget {
                               children: [
                                 Icon(Icons.feedback, size: 16, color: Colors.blue.shade700),
                                 const SizedBox(width: 8),
-                                Expanded(child: Text('Feedback: ${submission['feedback']}', style: TextStyle(color: Colors.blue.shade700, fontSize: 13))),
+                                Expanded(child: Text('Feedback: $feedback', style: TextStyle(color: Colors.blue.shade700, fontSize: 13))),
                               ],
                             ),
                           ),
